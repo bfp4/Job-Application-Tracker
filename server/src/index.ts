@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import cors from "cors";
+import { authenticate } from "./middleware/auth";
 
 const app = express();
 
@@ -17,6 +18,11 @@ app.use(express.json());
 // Health check
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
+});
+
+// Protected route: returns the authenticated user's DB record.
+app.get("/api/me", authenticate, (req: Request, res: Response) => {
+  res.json({ user: req.user });
 });
 
 app.listen(PORT, () => {
