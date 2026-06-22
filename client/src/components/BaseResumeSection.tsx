@@ -10,6 +10,7 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import KeywordGroups from "@/components/KeywordGroups";
 import type {
   BaseResume,
   ResumeStructure,
@@ -18,6 +19,7 @@ import type {
   ResumeProject,
   ResumeLeadership,
   ResumeSkills,
+  ResumeKeywords,
 } from "@/lib/types";
 
 const PDF_CONTENT_TYPE = "application/pdf";
@@ -33,6 +35,20 @@ export default function BaseResumeSection() {
   const [uploading, setUploading] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+
+  const [keywords, setKeywords] = useState<ResumeKeywords | null>(null);
+  const [extractingKeywords, setExtractingKeywords] = useState(false);
+
+  const loadKeywords = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/user/keywords");
+      if (!res.ok) return;
+      const data = (await res.json()) as { keywords: ResumeKeywords | null };
+      setKeywords(data.keywords);
+    } catch {
+      // Non-fatal: keyword display is best-effort.
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,8 +72,38 @@ export default function BaseResumeSection() {
   useEffect(() => {
     if (!authLoading && user) {
       load();
+      loadKeywords();
     }
-  }, [authLoading, user, load]);
+  }, [authLoading, user, load, loadKeywords]);
+
+  /**
+   * Keyword extraction runs in the background server-side after upload, so poll
+   * for it briefly (every 2s, up to 10s) and show the results once they land.
+   */
+  const pollForKeywords = useCallback(async () => {
+    setExtractingKeywords(true);
+    try {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          const res = await apiFetch("/api/user/keywords");
+          if (res.ok) {
+            const data = (await res.json()) as {
+              keywords: ResumeKeywords | null;
+            };
+            if (data.keywords && data.keywords.technologies.length > 0) {
+              setKeywords(data.keywords);
+              break;
+            }
+          }
+        } catch {
+          // Ignore and retry on the next tick.
+        }
+      }
+    } finally {
+      setExtractingKeywords(false);
+    }
+  }, []);
 
   async function handleFile(file: File) {
     setError(null);
@@ -85,6 +131,9 @@ export default function BaseResumeSection() {
       }
       await load();
       setReplacing(false);
+      // Fresh upload re-extracts keywords; clear stale ones and poll for new.
+      setKeywords(null);
+      void pollForKeywords();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to upload resume.");
     } finally {
@@ -164,10 +213,58 @@ export default function BaseResumeSection() {
             </div>
           </div>
 
+          <KeywordsCard
+            extracting={extractingKeywords}
+            keywords={keywords}
+          />
+
           {showPreview && <ResumePreview resume={baseResume.content} />}
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Shows the search keywords extracted from the resume. While extraction is in
+ * flight (right after an upload) it shows a loading indicator instead.
+ */
+function KeywordsCard({
+  extracting,
+  keywords,
+}: {
+  extracting: boolean;
+  keywords: ResumeKeywords | null;
+}) {
+  if (extracting && !keywords) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <p className="text-sm font-semibold text-gray-900">
+          ✨ Search keywords
+        </p>
+        <p className="mt-1 text-sm text-gray-500">
+          Extracting search keywords from your resume…
+        </p>
+      </div>
+    );
+  }
+
+  if (!keywords || keywords.technologies.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <p className="text-sm font-semibold text-gray-900">✨ Search keywords</p>
+      <p className="mt-0.5 text-sm text-gray-500">
+        We use these to enhance your job searches when Smart Search is on.
+      </p>
+      <div className="mt-3">
+        <KeywordGroups keywords={keywords} />
+      </div>
+      <p className="mt-2 text-xs text-gray-400">
+        These were extracted from your resume. Re-upload your resume to update
+        them.
+      </p>
+    </div>
   );
 }
 

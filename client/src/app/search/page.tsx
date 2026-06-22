@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import AppShell from "@/components/AppShell";
+import KeywordGroups from "@/components/KeywordGroups";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type {
   JobPosting,
   JobSearchPagination,
+  ResumeKeywords,
 } from "@/lib/types";
 
 type PostedWithin = "any" | "day" | "week" | "month";
@@ -30,28 +31,22 @@ const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 10;
 
-type TrackState = "idle" | "tracking" | "tracked" | "error";
+type KeywordMode = "or" | "and";
+const KEYWORD_MODE_STORAGE_KEY = "jobSearchKeywordMode";
 
-type RankState = "idle" | "ranking" | "ranked";
+function readStoredKeywordMode(): KeywordMode {
+  if (typeof window === "undefined") return "or";
+  const stored = localStorage.getItem(KEYWORD_MODE_STORAGE_KEY);
+  return stored === "and" ? "and" : "or";
+}
 
-/** A search result optionally enriched with an AI Smart Rank fit assessment. */
-type RankedJobPosting = JobPosting & {
-  fitScore?: number | null;
-  fitReason?: string | null;
-};
+type TrackState = "idle" | "tracking" | "error";
 
 function pageNumbers(current: number, total: number): number[] {
   if (total <= 1) return [1];
   const start = Math.max(1, current - 2);
   const end = Math.min(total, current + 2);
   return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
-
-/** Color-codes a fit score badge: green 70+, yellow 40-69, red below 40. */
-function fitBadgeClasses(score: number): string {
-  if (score >= 70) return "bg-green-50 text-green-700 ring-green-200";
-  if (score >= 40) return "bg-yellow-50 text-yellow-700 ring-yellow-200";
-  return "bg-red-50 text-red-700 ring-red-200";
 }
 
 export default function SearchPage() {
@@ -61,7 +56,7 @@ export default function SearchPage() {
   const [experienceLevel, setExperienceLevel] =
     useState<ExperienceLevel | null>(null);
 
-  const [jobs, setJobs] = useState<RankedJobPosting[] | null>(null);
+  const [jobs, setJobs] = useState<JobPosting[] | null>(null);
   const [pagination, setPagination] = useState<JobSearchPagination | null>(
     null
   );
@@ -74,8 +69,64 @@ export default function SearchPage() {
 
   const [trackState, setTrackState] = useState<Record<string, TrackState>>({});
 
-  const [rankState, setRankState] = useState<RankState>("idle");
-  const [toast, setToast] = useState<string | null>(null);
+  // Smart Search: resume keywords are appended to the query server-side.
+  const [keywords, setKeywords] = useState<ResumeKeywords | null>(null);
+  const [smartSearch, setSmartSearch] = useState(false);
+  const [keywordMode, setKeywordMode] = useState<KeywordMode>("or");
+  const [savingPref, setSavingPref] = useState(false);
+  const [showKeywords, setShowKeywords] = useState(false);
+
+  const hasKeywords =
+    keywords !== null && keywords.technologies.length > 0;
+
+  useEffect(() => {
+    setKeywordMode(readStoredKeywordMode());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/user/keywords");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          keywords: ResumeKeywords | null;
+          keywordsEnabled: boolean;
+        };
+        if (cancelled) return;
+        setKeywords(data.keywords);
+        setSmartSearch(data.keywordsEnabled && data.keywords !== null);
+      } catch {
+        // Non-fatal: Smart Search simply stays off if we can't load keywords.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleToggleSmartSearch() {
+    const next = !smartSearch;
+    setSmartSearch(next);
+    setSavingPref(true);
+    try {
+      const res = await apiFetch("/api/user/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ keywordsEnabled: next }),
+      });
+      if (!res.ok) throw new Error("Failed to update preference.");
+    } catch {
+      // Revert the optimistic toggle if the save failed.
+      setSmartSearch(!next);
+    } finally {
+      setSavingPref(false);
+    }
+  }
+
+  function handleKeywordModeChange(mode: KeywordMode) {
+    setKeywordMode(mode);
+    localStorage.setItem(KEYWORD_MODE_STORAGE_KEY, mode);
+  }
 
   const runSearch = useCallback(
     async (options?: {
@@ -89,9 +140,6 @@ export default function SearchPage() {
       setError(null);
       setLoading(true);
       if (options?.resetTrack) setTrackState({});
-      // A fresh page of results invalidates any prior Smart Rank ordering.
-      setRankState("idle");
-      setToast(null);
 
       try {
         const res = await apiFetch("/api/jobs/search", {
@@ -103,6 +151,9 @@ export default function SearchPage() {
             resultsPerPage: targetPageSize,
             ...(postedWithin !== "any" ? { postedWithin } : {}),
             ...(experienceLevel ? { experienceLevel } : {}),
+            ...(smartSearch && hasKeywords
+              ? { useKeywords: true, keywordMode }
+              : {}),
           }),
         });
 
@@ -129,7 +180,17 @@ export default function SearchPage() {
         setLoading(false);
       }
     },
-    [query, location, postedWithin, experienceLevel, page, pageSize]
+    [
+      query,
+      location,
+      postedWithin,
+      experienceLevel,
+      page,
+      pageSize,
+      smartSearch,
+      hasKeywords,
+      keywordMode,
+    ]
   );
 
   function handleSearch(e: FormEvent) {
@@ -167,79 +228,14 @@ export default function SearchPage() {
         body: JSON.stringify({ jobPostingId }),
       });
       if (!res.ok) throw new Error("Failed to track job.");
-      setTrackState((prev) => ({ ...prev, [jobPostingId]: "tracked" }));
+      setJobs((prev) => prev?.filter((job) => job.id !== jobPostingId) ?? prev);
+      setTrackState((prev) => {
+        const next = { ...prev };
+        delete next[jobPostingId];
+        return next;
+      });
     } catch {
       setTrackState((prev) => ({ ...prev, [jobPostingId]: "error" }));
-    }
-  }
-
-  async function handleSmartRank() {
-    if (!jobs || jobs.length === 0) return;
-
-    setRankState("ranking");
-    setToast(null);
-
-    try {
-      const res = await apiFetch("/api/jobs/smart-rank", {
-        method: "POST",
-        body: JSON.stringify({ jobs }),
-      });
-
-      if (!res.ok) {
-        if (res.status === 400) {
-          setToast("Upload a resume in Settings to use Smart Rank");
-        } else {
-          setToast(
-            "Smart ranking unavailable — showing results by date instead"
-          );
-        }
-        setRankState("idle");
-        return;
-      }
-
-      const data = (await res.json()) as {
-        jobs: Array<{
-          externalId: string;
-          fitScore: number | null;
-          fitReason: string | null;
-        }>;
-      };
-
-      // Claude failed if every returned job came back without a score; the
-      // server preserved the original order, so keep showing results by date.
-      const anyScored = data.jobs.some((j) => j.fitScore !== null);
-      if (!anyScored) {
-        setToast(
-          "Smart ranking unavailable — showing results by date instead"
-        );
-        setRankState("idle");
-        return;
-      }
-
-      // Merge scores back onto the current postings (matched by externalId) and
-      // reorder to mirror the server's fitScore-descending ranking.
-      const byExternalId = new Map(jobs.map((job) => [job.externalId, job]));
-      const reordered: RankedJobPosting[] = [];
-      for (const scored of data.jobs) {
-        const original = byExternalId.get(scored.externalId);
-        if (!original) continue;
-        reordered.push({
-          ...original,
-          fitScore: scored.fitScore,
-          fitReason: scored.fitReason,
-        });
-        byExternalId.delete(scored.externalId);
-      }
-      // Append any postings the server didn't return a score for, in case.
-      for (const leftover of byExternalId.values()) {
-        reordered.push(leftover);
-      }
-
-      setJobs(reordered);
-      setRankState("ranked");
-    } catch {
-      setToast("Smart ranking unavailable — showing results by date instead");
-      setRankState("idle");
     }
   }
 
@@ -257,6 +253,100 @@ export default function SearchPage() {
           <p className="mt-1 text-sm text-gray-500">
             Find postings and track the ones you want to apply to.
           </p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900">
+                ✨ Smart Search
+              </p>
+              <p className="mt-0.5 text-sm text-gray-500">
+                Enhances your search with keywords from your resume
+              </p>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={smartSearch}
+              aria-label="Smart Search"
+              disabled={!hasKeywords || savingPref}
+              onClick={handleToggleSmartSearch}
+              className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                smartSearch && hasKeywords ? "bg-violet-600" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  smartSearch && hasKeywords ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {!hasKeywords && (
+            <p className="mt-2 text-xs text-gray-400">
+              Upload a resume to enable Smart Search
+            </p>
+          )}
+
+          {hasKeywords && smartSearch && keywords && (
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowKeywords((v) => !v)}
+                className="text-sm font-medium text-violet-700 hover:text-violet-900"
+              >
+                {showKeywords ? "Hide your keywords ▴" : "See your keywords ▾"}
+              </button>
+              {showKeywords && (
+                <div className="mt-3 space-y-2">
+                  <KeywordGroups keywords={keywords} />
+                  <p className="text-xs text-gray-400">
+                    These were extracted from your resume. Re-upload your resume
+                    to update them.
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <p className="text-xs font-medium text-gray-700">
+                  Keyword matching
+                </p>
+                <div className="mt-1.5 inline-flex rounded-md border border-gray-300 p-0.5">
+                  <button
+                    type="button"
+                    aria-pressed={keywordMode === "or"}
+                    onClick={() => handleKeywordModeChange("or")}
+                    className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
+                      keywordMode === "or"
+                        ? "bg-violet-600 text-white"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    Broad (OR)
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={keywordMode === "and"}
+                    onClick={() => handleKeywordModeChange("and")}
+                    className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
+                      keywordMode === "and"
+                        ? "bg-violet-600 text-white"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    Strict (AND)
+                  </button>
+                </div>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Broad finds more jobs matching any of your skills. Strict finds
+                  fewer jobs but all must match your top 3 skills.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <form
@@ -366,20 +456,6 @@ export default function SearchPage() {
           </div>
         )}
 
-        {toast && (
-          <div className="flex items-start justify-between gap-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-            <span>{toast}</span>
-            <button
-              type="button"
-              onClick={() => setToast(null)}
-              className="shrink-0 font-medium text-amber-700 hover:text-amber-900"
-              aria-label="Dismiss"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
         {loading && (
           <p className="text-sm text-gray-500">Fetching the latest postings…</p>
         )}
@@ -387,7 +463,9 @@ export default function SearchPage() {
         {!loading && hasSearched && jobs !== null && jobs.length === 0 && (
           <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
             <p className="text-sm text-gray-500">
-              No jobs found. Try a different title or location.
+              {totalCount > 0
+                ? "No new jobs on this page — you may have already tracked these results. Try another page or search."
+                : "No jobs found. Try a different title or location."}
             </p>
           </div>
         )}
@@ -407,22 +485,6 @@ export default function SearchPage() {
                 Showing {rangeStart}–{rangeEnd} of {totalCount} results
               </p>
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleSmartRank}
-                  disabled={rankState === "ranking"}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium ring-1 ring-inset disabled:opacity-50 ${
-                    rankState === "ranked"
-                      ? "bg-violet-50 text-violet-700 ring-violet-200 hover:bg-violet-100"
-                      : "bg-gray-900 text-white ring-gray-900 hover:bg-gray-800"
-                  }`}
-                >
-                  {rankState === "ranking"
-                    ? "Ranking…"
-                    : rankState === "ranked"
-                      ? "✓ Smart Ranked · Re-rank"
-                      : "✨ Smart Rank"}
-                </button>
                 <label
                   htmlFor="pageSize"
                   className="text-sm text-gray-600"
@@ -457,25 +519,9 @@ export default function SearchPage() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          {typeof job.fitScore === "number" && (
-                            <span
-                              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${fitBadgeClasses(
-                                job.fitScore
-                              )}`}
-                            >
-                              {job.fitScore}
-                            </span>
-                          )}
-                          <h2 className="font-medium text-gray-900">
-                            {job.title}
-                          </h2>
-                        </div>
-                        {job.fitReason && (
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            {job.fitReason}
-                          </p>
-                        )}
+                        <h2 className="font-medium text-gray-900">
+                          {job.title}
+                        </h2>
                         <p className="mt-0.5 text-sm text-gray-600">
                           {job.company?.name ?? "Unknown company"}
                           {job.location ? ` · ${job.location}` : ""}
@@ -499,27 +545,18 @@ export default function SearchPage() {
                       </div>
 
                       <div className="shrink-0">
-                        {state === "tracked" ? (
-                          <Link
-                            href="/applications"
-                            className="inline-flex items-center rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-200 hover:bg-green-100"
-                          >
-                            Tracked ✓
-                          </Link>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleTrack(job.id)}
-                            disabled={state === "tracking"}
-                            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {state === "tracking"
-                              ? "Tracking…"
-                              : state === "error"
-                                ? "Retry"
-                                : "Track this job"}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleTrack(job.id)}
+                          disabled={state === "tracking"}
+                          className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {state === "tracking"
+                            ? "Tracking…"
+                            : state === "error"
+                              ? "Retry"
+                              : "Track this job"}
+                        </button>
                       </div>
                     </div>
                   </li>

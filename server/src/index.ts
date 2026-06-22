@@ -12,6 +12,7 @@ import resumesRouter from "./routes/resumes";
 import searchPreferencesRouter from "./routes/searchPreferences";
 import digestRouter from "./routes/digest";
 import insightsRouter from "./routes/insights";
+import userRouter from "./routes/user";
 
 const app = express();
 
@@ -57,6 +58,9 @@ app.use("/api/resumes", resumesRouter);
 
 // AI-powered application insights dashboard (auth per-route).
 app.use("/api/insights", insightsRouter);
+
+// User keywords + preference toggles (Smart Search), auth per-route.
+app.use("/api/user", userRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

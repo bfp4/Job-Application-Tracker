@@ -33,6 +33,13 @@ model User {
   email       String   @unique
   createdAt   DateTime @default(now())
 
+  // Keywords extracted from the user's most recent base resume (see
+  // keywordExtractor.ts), stored as a ResumeKeywords-shaped JSON blob and used
+  // to enrich job searches. Null until the first extraction succeeds.
+  resumeKeywords  Json?
+  // Whether resume keywords are appended to searches ("Smart Search" toggle).
+  keywordsEnabled Boolean @default(true)
+
   contacts      Contact[]
   applications  Application[]
   baseResumes   BaseResume[]

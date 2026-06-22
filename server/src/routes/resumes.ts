@@ -11,7 +11,33 @@ import {
 } from "../services/resumeParser";
 import { tailorResume } from "../services/resumeTailor";
 import { renderResumeToPdf } from "../services/resumeRenderer";
+import { extractKeywordsFromResume } from "../services/keywordExtractor";
 import type { ResumeStructure } from "../types/resume";
+
+/**
+ * Fire-and-forget: extract search keywords from a freshly uploaded resume and
+ * persist them to the user. Runs after the upload response is sent and never
+ * throws — a failed extraction must never affect the resume upload.
+ */
+function extractKeywordsInBackground(
+  userId: string,
+  parsedStructure: ResumeStructure
+): void {
+  void (async () => {
+    try {
+      const keywords = await extractKeywordsFromResume(parsedStructure);
+      if (!keywords) return;
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          resumeKeywords: keywords as unknown as Prisma.InputJsonValue,
+        },
+      });
+    } catch (err) {
+      console.error("Background keyword extraction failed:", err);
+    }
+  })();
+}
 
 const router = Router();
 
@@ -110,6 +136,9 @@ router.post("/base", authenticate, async (req: Request, res: Response) => {
         pdfS3Key: key,
       },
     });
+
+    // Kick off keyword extraction without blocking the upload response.
+    extractKeywordsInBackground(req.user!.id, content);
 
     res.status(201).json({ baseResume });
   } catch (err) {

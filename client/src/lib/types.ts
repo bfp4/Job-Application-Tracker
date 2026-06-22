@@ -130,6 +130,14 @@ export interface BaseResume {
   createdAt: string;
 }
 
+/** Search keywords extracted from a resume (see server keywordExtractor). */
+export interface ResumeKeywords {
+  technologies: string[];
+  roles: string[];
+  domains: string[];
+  searchTerms: string[];
+}
+
 export interface TailoredResume {
   id: string;
   applicationId: string;
