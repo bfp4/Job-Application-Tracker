@@ -12,12 +12,23 @@ import type {
   Application,
   ApplicationStatus,
   FollowUpWithApplication,
+  Insight,
+  InsightType,
+  InsightReport,
 } from "@/lib/types";
+
+const INSIGHT_ICON: Record<InsightType, { icon: string; className: string }> = {
+  positive: { icon: "✓", className: "bg-green-100 text-green-700" },
+  warning: { icon: "⚠", className: "bg-amber-100 text-amber-700" },
+  suggestion: { icon: "→", className: "bg-blue-100 text-blue-700" },
+  neutral: { icon: "•", className: "bg-gray-100 text-gray-600" },
+};
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
 
   const [applications, setApplications] = useState<Application[]>([]);
+  const [latestInsight, setLatestInsight] = useState<Insight | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,10 +40,21 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch("/api/applications");
-        if (!res.ok) throw new Error("Failed to load dashboard.");
-        const data = (await res.json()) as { applications: Application[] };
+        const [appsRes, historyRes] = await Promise.all([
+          apiFetch("/api/applications"),
+          apiFetch("/api/insights/history"),
+        ]);
+        if (!appsRes.ok) throw new Error("Failed to load dashboard.");
+        const data = (await appsRes.json()) as { applications: Application[] };
         if (!cancelled) setApplications(data.applications);
+
+        if (historyRes.ok) {
+          const historyData = (await historyRes.json()) as {
+            reports: InsightReport[];
+          };
+          const latest = historyData.reports?.[0]?.insights?.[0] ?? null;
+          if (!cancelled) setLatestInsight(latest);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load.");
@@ -134,6 +156,40 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            {/* Insights preview */}
+            <section>
+              <Link
+                href="/insights"
+                className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-colors hover:bg-gray-50"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Insights</p>
+                  {latestInsight ? (
+                    <p className="mt-1 flex items-center gap-2 text-sm text-gray-600">
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                          (INSIGHT_ICON[latestInsight.type] ??
+                            INSIGHT_ICON.neutral).className
+                        }`}
+                        aria-hidden
+                      >
+                        {(INSIGHT_ICON[latestInsight.type] ??
+                          INSIGHT_ICON.neutral).icon}
+                      </span>
+                      <span className="truncate">{latestInsight.title}</span>
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-500">
+                      Generate your first insight →
+                    </p>
+                  )}
+                </div>
+                <span className="shrink-0 text-sm font-medium text-gray-400">
+                  View →
+                </span>
+              </Link>
             </section>
 
             {/* Upcoming follow-ups */}

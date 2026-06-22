@@ -55,6 +55,26 @@ function getS3(): S3Config {
 }
 
 /**
+ * Uploads a buffer to S3 from the server (as opposed to the pre-signed PUT flow
+ * used by the frontend). Used for resume PDFs that are processed server-side:
+ * the original uploaded resume and the AI-rendered tailored resume.
+ */
+export async function uploadBuffer(
+  key: string,
+  body: Buffer,
+  contentType: string
+): Promise<void> {
+  const { client, bucket } = getS3();
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  });
+  await client.send(command);
+}
+
+/**
  * Returns a pre-signed PUT URL (valid for 5 minutes) so the frontend can upload
  * a file directly to S3 without routing the bytes through Express.
  */
@@ -74,12 +94,23 @@ export async function getUploadUrl(
 /**
  * Returns a pre-signed GET URL (valid for 15 minutes) so the frontend can
  * view/download a stored file.
+ *
+ * Pass `downloadFilename` to force the browser to download the file (via a
+ * Content-Disposition: attachment header) instead of rendering it inline.
  */
-export async function getDownloadUrl(key: string): Promise<string> {
+export async function getDownloadUrl(
+  key: string,
+  options?: { downloadFilename?: string }
+): Promise<string> {
   const { client, bucket } = getS3();
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: key,
+    ...(options?.downloadFilename
+      ? {
+          ResponseContentDisposition: `attachment; filename="${options.downloadFilename}"`,
+        }
+      : {}),
   });
   return getSignedUrl(client, command, { expiresIn: DOWNLOAD_URL_TTL_SECONDS });
 }

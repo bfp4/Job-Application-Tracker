@@ -1,13 +1,18 @@
 import { Router, type Request, type Response } from "express";
 import { authenticate } from "../middleware/auth";
 import { ingestJobs } from "../services/jobIngestion";
+import { rankJobsForUser } from "../services/jobRanker";
 import { prisma } from "../lib/prisma";
-import type { JobSearchParams } from "../jobSources/types";
+import type { JobSearchParams, NormalizedJob } from "../jobSources/types";
+import type { ResumeStructure } from "../types/resume";
 
 const router = Router();
 
 const VALID_POSTED_WITHIN = ["day", "week", "month"] as const;
 type PostedWithin = (typeof VALID_POSTED_WITHIN)[number];
+
+const VALID_EXPERIENCE_LEVELS = ["entry", "mid", "senior"] as const;
+type ExperienceLevel = (typeof VALID_EXPERIENCE_LEVELS)[number];
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_RESULTS_PER_PAGE = 10;
@@ -17,6 +22,13 @@ function isPostedWithin(value: unknown): value is PostedWithin {
   return (
     typeof value === "string" &&
     (VALID_POSTED_WITHIN as readonly string[]).includes(value)
+  );
+}
+
+function isExperienceLevel(value: unknown): value is ExperienceLevel {
+  return (
+    typeof value === "string" &&
+    (VALID_EXPERIENCE_LEVELS as readonly string[]).includes(value)
   );
 }
 
@@ -39,7 +51,8 @@ function parsePositiveInt(
  * and returns the current page of jobs plus pagination metadata.
  */
 router.post("/search", authenticate, async (req: Request, res: Response) => {
-  const { query, location, postedWithin, page, resultsPerPage } = req.body ?? {};
+  const { query, location, postedWithin, experienceLevel, page, resultsPerPage } =
+    req.body ?? {};
 
   if (typeof query !== "string" || query.trim() === "") {
     res.status(400).json({ error: "`query` is required and must be a string." });
@@ -56,6 +69,13 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
   if (postedWithin !== undefined && !isPostedWithin(postedWithin)) {
     res.status(400).json({
       error: "`postedWithin` must be one of 'day', 'week', or 'month'.",
+    });
+    return;
+  }
+
+  if (experienceLevel !== undefined && !isExperienceLevel(experienceLevel)) {
+    res.status(400).json({
+      error: "`experienceLevel` must be one of 'entry', 'mid', or 'senior'.",
     });
     return;
   }
@@ -84,21 +104,25 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
     page: parsedPage,
     resultsPerPage: parsedPageSize,
     ...(postedWithin ? { postedWithin } : {}),
+    ...(experienceLevel ? { experienceLevel } : {}),
   };
 
   try {
     const { summary, totalCount, jobs } = await ingestJobs(params);
 
     // Record this search so it can feed the daily recommendations digest.
-    // Keyed on [userId, query, location]: repeats bump searchCount and recency
-    // instead of creating duplicate rows. Failures here must not break search.
+    // Keyed on [userId, query, location, experienceLevel]: repeats bump
+    // searchCount and recency instead of creating duplicate rows, while the
+    // same query at different experience levels is tracked separately. Failures
+    // here must not break search.
     try {
       await prisma.searchQuery.upsert({
         where: {
-          userId_query_location: {
+          userId_query_location_experienceLevel: {
             userId: req.user!.id,
             query: params.query,
             location: params.location,
+            experienceLevel: params.experienceLevel ?? "",
           },
         },
         update: {
@@ -111,6 +135,7 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
           query: params.query,
           location: params.location,
           postedWithin: params.postedWithin ?? null,
+          experienceLevel: params.experienceLevel ?? "",
           lastSearchedAt: new Date(),
         },
       });
@@ -133,6 +158,86 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Job search failed:", err);
     res.status(500).json({ error: "Failed to fetch and ingest jobs." });
+  }
+});
+
+/**
+ * Coerces a loosely-typed incoming job object into a NormalizedJob, tolerating
+ * the slightly different field names the client may send (e.g. a persisted
+ * JobPosting with a nested company instead of companyName).
+ */
+function toNormalizedJob(raw: unknown): NormalizedJob | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+
+  const externalId =
+    typeof r.externalId === "string" ? r.externalId : undefined;
+  if (!externalId) return null;
+
+  const company = r.company as { name?: unknown } | undefined;
+  const companyName =
+    typeof r.companyName === "string"
+      ? r.companyName
+      : typeof company?.name === "string"
+        ? company.name
+        : "Unknown";
+
+  return {
+    externalId,
+    source: typeof r.source === "string" ? r.source : "",
+    title: typeof r.title === "string" ? r.title : "",
+    description: typeof r.description === "string" ? r.description : "",
+    location: typeof r.location === "string" ? r.location : "",
+    jobUrl: typeof r.jobUrl === "string" ? r.jobUrl : "",
+    companyName,
+    postedDate: typeof r.postedDate === "string" ? r.postedDate : null,
+  };
+}
+
+/**
+ * POST /api/jobs/smart-rank
+ *
+ * Re-ranks a set of jobs (already returned from a previous search) against the
+ * authenticated user's most recent base resume using AI, returning them sorted
+ * by fit. Requires a base resume to be on file.
+ */
+router.post("/smart-rank", authenticate, async (req: Request, res: Response) => {
+  const { jobs } = req.body ?? {};
+
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    res
+      .status(400)
+      .json({ error: "`jobs` must be a non-empty array of jobs to rank." });
+    return;
+  }
+
+  const normalized = jobs
+    .map(toNormalizedJob)
+    .filter((job): job is NormalizedJob => job !== null);
+
+  if (normalized.length === 0) {
+    res.status(400).json({ error: "No valid jobs were provided to rank." });
+    return;
+  }
+
+  try {
+    const baseResume = await prisma.baseResume.findFirst({
+      where: { userId: req.user!.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!baseResume) {
+      res.status(400).json({ error: "Upload a base resume to use Smart Rank" });
+      return;
+    }
+
+    const resumeContent = baseResume.content as unknown as ResumeStructure;
+    const ranked = await rankJobsForUser(normalized, resumeContent);
+
+    res.json({ jobs: ranked });
+  } catch (err) {
+    console.error("Smart Rank failed:", err);
+    res.status(500).json({ error: "Failed to rank jobs." });
   }
 });
 

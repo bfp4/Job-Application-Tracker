@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/search", label: "Search" },
   { href: "/applications", label: "Applications" },
+  { href: "/insights", label: "Insights" },
   { href: "/settings", label: "Settings" },
 ];
 

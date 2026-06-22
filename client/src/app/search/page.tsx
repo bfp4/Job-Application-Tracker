@@ -19,10 +19,26 @@ const POSTED_OPTIONS: { value: PostedWithin; label: string }[] = [
   { value: "month", label: "Past month" },
 ];
 
+type ExperienceLevel = "entry" | "mid" | "senior";
+
+const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
+  { value: "entry", label: "Entry" },
+  { value: "mid", label: "Mid" },
+  { value: "senior", label: "Senior" },
+];
+
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 10;
 
 type TrackState = "idle" | "tracking" | "tracked" | "error";
+
+type RankState = "idle" | "ranking" | "ranked";
+
+/** A search result optionally enriched with an AI Smart Rank fit assessment. */
+type RankedJobPosting = JobPosting & {
+  fitScore?: number | null;
+  fitReason?: string | null;
+};
 
 function pageNumbers(current: number, total: number): number[] {
   if (total <= 1) return [1];
@@ -31,12 +47,21 @@ function pageNumbers(current: number, total: number): number[] {
   return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
+/** Color-codes a fit score badge: green 70+, yellow 40-69, red below 40. */
+function fitBadgeClasses(score: number): string {
+  if (score >= 70) return "bg-green-50 text-green-700 ring-green-200";
+  if (score >= 40) return "bg-yellow-50 text-yellow-700 ring-yellow-200";
+  return "bg-red-50 text-red-700 ring-red-200";
+}
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
   const [postedWithin, setPostedWithin] = useState<PostedWithin>("any");
+  const [experienceLevel, setExperienceLevel] =
+    useState<ExperienceLevel | null>(null);
 
-  const [jobs, setJobs] = useState<JobPosting[] | null>(null);
+  const [jobs, setJobs] = useState<RankedJobPosting[] | null>(null);
   const [pagination, setPagination] = useState<JobSearchPagination | null>(
     null
   );
@@ -48,6 +73,9 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [trackState, setTrackState] = useState<Record<string, TrackState>>({});
+
+  const [rankState, setRankState] = useState<RankState>("idle");
+  const [toast, setToast] = useState<string | null>(null);
 
   const runSearch = useCallback(
     async (options?: {
@@ -61,6 +89,9 @@ export default function SearchPage() {
       setError(null);
       setLoading(true);
       if (options?.resetTrack) setTrackState({});
+      // A fresh page of results invalidates any prior Smart Rank ordering.
+      setRankState("idle");
+      setToast(null);
 
       try {
         const res = await apiFetch("/api/jobs/search", {
@@ -71,6 +102,7 @@ export default function SearchPage() {
             page: targetPage,
             resultsPerPage: targetPageSize,
             ...(postedWithin !== "any" ? { postedWithin } : {}),
+            ...(experienceLevel ? { experienceLevel } : {}),
           }),
         });
 
@@ -97,7 +129,7 @@ export default function SearchPage() {
         setLoading(false);
       }
     },
-    [query, location, postedWithin, page, pageSize]
+    [query, location, postedWithin, experienceLevel, page, pageSize]
   );
 
   function handleSearch(e: FormEvent) {
@@ -138,6 +170,76 @@ export default function SearchPage() {
       setTrackState((prev) => ({ ...prev, [jobPostingId]: "tracked" }));
     } catch {
       setTrackState((prev) => ({ ...prev, [jobPostingId]: "error" }));
+    }
+  }
+
+  async function handleSmartRank() {
+    if (!jobs || jobs.length === 0) return;
+
+    setRankState("ranking");
+    setToast(null);
+
+    try {
+      const res = await apiFetch("/api/jobs/smart-rank", {
+        method: "POST",
+        body: JSON.stringify({ jobs }),
+      });
+
+      if (!res.ok) {
+        if (res.status === 400) {
+          setToast("Upload a resume in Settings to use Smart Rank");
+        } else {
+          setToast(
+            "Smart ranking unavailable — showing results by date instead"
+          );
+        }
+        setRankState("idle");
+        return;
+      }
+
+      const data = (await res.json()) as {
+        jobs: Array<{
+          externalId: string;
+          fitScore: number | null;
+          fitReason: string | null;
+        }>;
+      };
+
+      // Claude failed if every returned job came back without a score; the
+      // server preserved the original order, so keep showing results by date.
+      const anyScored = data.jobs.some((j) => j.fitScore !== null);
+      if (!anyScored) {
+        setToast(
+          "Smart ranking unavailable — showing results by date instead"
+        );
+        setRankState("idle");
+        return;
+      }
+
+      // Merge scores back onto the current postings (matched by externalId) and
+      // reorder to mirror the server's fitScore-descending ranking.
+      const byExternalId = new Map(jobs.map((job) => [job.externalId, job]));
+      const reordered: RankedJobPosting[] = [];
+      for (const scored of data.jobs) {
+        const original = byExternalId.get(scored.externalId);
+        if (!original) continue;
+        reordered.push({
+          ...original,
+          fitScore: scored.fitScore,
+          fitReason: scored.fitReason,
+        });
+        byExternalId.delete(scored.externalId);
+      }
+      // Append any postings the server didn't return a score for, in case.
+      for (const leftover of byExternalId.values()) {
+        reordered.push(leftover);
+      }
+
+      setJobs(reordered);
+      setRankState("ranked");
+    } catch {
+      setToast("Smart ranking unavailable — showing results by date instead");
+      setRankState("idle");
     }
   }
 
@@ -225,11 +327,56 @@ export default function SearchPage() {
           >
             {loading ? "Searching…" : "Search"}
           </button>
+
+          <div className="sm:col-span-full">
+            <span className="block text-sm font-medium text-gray-700">
+              Experience level{" "}
+              <span className="font-normal text-gray-400">(optional)</span>
+            </span>
+            <div className="mt-1 inline-flex rounded-md border border-gray-300 p-0.5">
+              {EXPERIENCE_OPTIONS.map((opt) => {
+                const active = experienceLevel === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setExperienceLevel((prev) =>
+                        prev === opt.value ? null : opt.value
+                      )
+                    }
+                    className={`rounded px-4 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </form>
 
         {error && (
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {toast && (
+          <div className="flex items-start justify-between gap-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+            <span>{toast}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="shrink-0 font-medium text-amber-700 hover:text-amber-900"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -259,7 +406,23 @@ export default function SearchPage() {
               <p className="text-sm text-gray-600">
                 Showing {rangeStart}–{rangeEnd} of {totalCount} results
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSmartRank}
+                  disabled={rankState === "ranking"}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ring-1 ring-inset disabled:opacity-50 ${
+                    rankState === "ranked"
+                      ? "bg-violet-50 text-violet-700 ring-violet-200 hover:bg-violet-100"
+                      : "bg-gray-900 text-white ring-gray-900 hover:bg-gray-800"
+                  }`}
+                >
+                  {rankState === "ranking"
+                    ? "Ranking…"
+                    : rankState === "ranked"
+                      ? "✓ Smart Ranked · Re-rank"
+                      : "✨ Smart Rank"}
+                </button>
                 <label
                   htmlFor="pageSize"
                   className="text-sm text-gray-600"
@@ -294,9 +457,25 @@ export default function SearchPage() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <h2 className="font-medium text-gray-900">
-                          {job.title}
-                        </h2>
+                        <div className="flex items-center gap-2">
+                          {typeof job.fitScore === "number" && (
+                            <span
+                              className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${fitBadgeClasses(
+                                job.fitScore
+                              )}`}
+                            >
+                              {job.fitScore}
+                            </span>
+                          )}
+                          <h2 className="font-medium text-gray-900">
+                            {job.title}
+                          </h2>
+                        </div>
+                        {job.fitReason && (
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {job.fitReason}
+                          </p>
+                        )}
                         <p className="mt-0.5 text-sm text-gray-600">
                           {job.company?.name ?? "Unknown company"}
                           {job.location ? ` · ${job.location}` : ""}

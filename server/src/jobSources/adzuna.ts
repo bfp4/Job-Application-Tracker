@@ -25,6 +25,19 @@ const MAX_DAYS_OLD: Record<NonNullable<JobSearchParams["postedWithin"]>, number>
   month: 30,
 };
 
+// Maps our generic experienceLevel onto Adzuna's `what_exclude` keyword filter,
+// dropping postings whose title/description mention seniority signals that don't
+// fit the requested level.
+const EXPERIENCE_EXCLUDE: Record<
+  NonNullable<JobSearchParams["experienceLevel"]>,
+  string
+> = {
+  entry:
+    "senior,lead,principal,staff,director,head,architect,manager,vp,10 years,8 years,7 years,6 years,5 years",
+  mid: "director,vp,head,principal,staff,entry level,junior,graduate,intern,no experience",
+  senior: "junior,entry level,graduate,intern,no experience,1 year,2 years",
+};
+
 /** Shape of the fields we read from Adzuna's search response. */
 interface AdzunaJob {
   id?: string | number;
@@ -72,6 +85,18 @@ export const adzunaSource: JobSource = {
     // Only constrain by date when the caller asked for it.
     if (params.postedWithin) {
       search.set("max_days_old", String(MAX_DAYS_OLD[params.postedWithin]));
+    }
+
+    // Only constrain by seniority when the caller asked for it. If a
+    // what_exclude value already exists (future-proofing), merge rather than
+    // overwrite so neither filter is lost.
+    if (params.experienceLevel) {
+      const levelExclude = EXPERIENCE_EXCLUDE[params.experienceLevel];
+      const existingExclude = search.get("what_exclude");
+      search.set(
+        "what_exclude",
+        existingExclude ? `${existingExclude},${levelExclude}` : levelExclude
+      );
     }
 
     const url = `${ADZUNA_BASE_URL}/${country}/search/${page}?${search.toString()}`;

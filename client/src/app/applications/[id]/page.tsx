@@ -20,6 +20,7 @@ import type {
   ApplicationStatus,
   Contact,
   FollowUp,
+  TailoredResumeWithUrls,
 } from "@/lib/types";
 
 export default function ApplicationDetailPage() {
@@ -305,6 +306,12 @@ function ApplicationDetail({
         applicationId={application.id}
         followUps={application.followUps ?? []}
         onChange={onFollowUpsChange}
+        onError={onError}
+      />
+
+      {/* Tailored resumes */}
+      <TailoredResumesSection
+        applicationId={application.id}
         onError={onError}
       />
 
@@ -889,6 +896,172 @@ function FollowUpsSection({
           {submitting ? "Adding…" : "Add"}
         </button>
       </form>
+    </section>
+  );
+}
+
+function TailoredResumesSection({
+  applicationId,
+  onError,
+}: {
+  applicationId: string;
+  onError: (message: string | null) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [baseResumeId, setBaseResumeId] = useState<string | null>(null);
+  const [resumes, setResumes] = useState<TailoredResumeWithUrls[]>([]);
+  const [generating, setGenerating] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [baseRes, tailoredRes] = await Promise.all([
+        apiFetch("/api/resumes/base"),
+        apiFetch(`/api/resumes/tailored/${applicationId}`),
+      ]);
+
+      if (baseRes.ok) {
+        const data = (await baseRes.json()) as {
+          baseResume: { id: string } | null;
+        };
+        setBaseResumeId(data.baseResume?.id ?? null);
+      }
+
+      if (tailoredRes.ok) {
+        const data = (await tailoredRes.json()) as {
+          tailoredResumes: TailoredResumeWithUrls[];
+        };
+        setResumes(data.tailoredResumes);
+      }
+    } catch {
+      onError("Failed to load tailored resumes.");
+    } finally {
+      setLoading(false);
+    }
+  }, [applicationId, onError]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleGenerate() {
+    if (!baseResumeId) return;
+    setGenerating(true);
+    onError(null);
+    try {
+      const res = await apiFetch("/api/resumes/tailor", {
+        method: "POST",
+        body: JSON.stringify({ applicationId, baseResumeId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Failed to tailor resume.");
+      }
+      const data = (await res.json()) as {
+        tailoredResume: TailoredResumeWithUrls;
+        viewUrl: string | null;
+        downloadUrl: string | null;
+      };
+      setResumes((prev) => [
+        {
+          ...data.tailoredResume,
+          viewUrl: data.viewUrl,
+          downloadUrl: data.downloadUrl,
+        },
+        ...prev,
+      ]);
+    } catch (err) {
+      onError(
+        err instanceof Error ? err.message : "Failed to tailor resume."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">
+            Tailored resumes
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Generate a version of your resume rewritten by AI to match this
+            role.
+          </p>
+        </div>
+        {baseResumeId && (
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generating}
+            className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          >
+            {generating ? "Tailoring…" : "Generate tailored resume"}
+          </button>
+        )}
+      </div>
+
+      {generating && (
+        <p className="mt-3 text-sm text-gray-500">
+          Tailoring your resume for this role…
+        </p>
+      )}
+
+      {loading ? (
+        <p className="mt-3 text-sm text-gray-500">Loading…</p>
+      ) : !baseResumeId ? (
+        <p className="mt-3 text-sm text-gray-500">
+          Upload a base resume first in{" "}
+          <Link href="/settings" className="underline hover:text-gray-900">
+            Settings
+          </Link>{" "}
+          to generate tailored versions.
+        </p>
+      ) : resumes.length === 0 ? (
+        <p className="mt-3 text-sm text-gray-500">
+          No tailored resumes yet for this application.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {resumes.map((resume) => (
+            <li
+              key={resume.id}
+              className="rounded-lg border border-gray-200 p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs text-gray-400">
+                  {formatDate(resume.createdAt)}
+                </p>
+              </div>
+              {resume.aiNotes && (
+                <p className="mt-1 text-sm text-gray-700">{resume.aiNotes}</p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {resume.viewUrl && (
+                  <a
+                    href={resume.viewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    View in browser
+                  </a>
+                )}
+                {resume.downloadUrl && (
+                  <a
+                    href={resume.downloadUrl}
+                    className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                  >
+                    Download PDF
+                  </a>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

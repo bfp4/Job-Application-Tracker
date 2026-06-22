@@ -119,6 +119,7 @@ model BaseResume {
   id        String   @id @default(cuid())
   userId    String
   content   Json
+  pdfS3Key  String?
   createdAt DateTime @default(now())
 
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -149,20 +150,23 @@ model InsightReport {
 }
 
 model SearchQuery {
-  id             String   @id @default(cuid())
-  userId         String
-  query          String
-  location       String
-  postedWithin   String?
-  searchCount    Int      @default(1)
-  lastSearchedAt DateTime
-  pinned         Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id              String   @id @default(cuid())
+  userId          String
+  query           String
+  location        String
+  postedWithin    String?
+  experienceLevel String?
+  searchCount     Int      @default(1)
+  lastSearchedAt  DateTime
+  pinned          Boolean  @default(false)
+  createdAt       DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Repeated identical searches increment searchCount instead of duplicating.
-  @@unique([userId, query, location])
+  // experienceLevel is part of the key so the same query at different seniority
+  // levels is tracked as a distinct saved search.
+  @@unique([userId, query, location, experienceLevel])
 }
 
 model DigestLog {

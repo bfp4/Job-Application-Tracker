@@ -20,6 +20,12 @@ export interface JobSearchParams {
    * adapter simply ignores it.
    */
   postedWithin?: "day" | "week" | "month";
+  /**
+   * Target seniority. Adapters translate this into whatever keyword-filtering
+   * their API supports to exclude irrelevant seniority levels. Ignored by
+   * adapters with no equivalent mechanism.
+   */
+  experienceLevel?: "entry" | "mid" | "senior";
 }
 
 /** A single job normalized into our canonical shape, source-agnostic. */

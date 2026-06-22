@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
+import BaseResumeSection from "@/components/BaseResumeSection";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
@@ -85,7 +86,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage how we recommend jobs to you.
+            Manage your resume and job search preferences.
           </p>
         </div>
 
@@ -168,6 +169,8 @@ export default function SettingsPage() {
             )}
           </div>
         </section>
+
+        <BaseResumeSection />
       </div>
     </AppShell>
   );

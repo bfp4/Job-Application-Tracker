@@ -8,8 +8,10 @@ import followUpsRouter from "./routes/followUps";
 import companiesRouter from "./routes/companies";
 import contactsRouter from "./routes/contacts";
 import filesRouter from "./routes/files";
+import resumesRouter from "./routes/resumes";
 import searchPreferencesRouter from "./routes/searchPreferences";
 import digestRouter from "./routes/digest";
+import insightsRouter from "./routes/insights";
 
 const app = express();
 
@@ -49,6 +51,12 @@ app.use("/api/digest", digestRouter);
 // File uploads/downloads via pre-signed S3 URLs. Mounted at /api because it
 // serves both /api/files/* and /api/applications/:id/files (auth per-route).
 app.use("/api", filesRouter);
+
+// Base resume upload/parse and AI resume tailoring (auth per-route).
+app.use("/api/resumes", resumesRouter);
+
+// AI-powered application insights dashboard (auth per-route).
+app.use("/api/insights", insightsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
