@@ -9,6 +9,9 @@ build/
 .next/
 out/
 
+# Lambda deployment package
+function.zip
+
 # Environment variables
 .env
 .env.local

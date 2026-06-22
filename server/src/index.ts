@@ -7,6 +7,9 @@ import applicationsRouter from "./routes/applications";
 import followUpsRouter from "./routes/followUps";
 import companiesRouter from "./routes/companies";
 import contactsRouter from "./routes/contacts";
+import filesRouter from "./routes/files";
+import searchPreferencesRouter from "./routes/searchPreferences";
+import digestRouter from "./routes/digest";
 
 const app = express();
 
@@ -38,6 +41,14 @@ app.use("/api/applications", applicationsRouter);
 app.use("/api/follow-ups", followUpsRouter);
 app.use("/api/companies", companiesRouter);
 app.use("/api/contacts", contactsRouter);
+
+// Recommended-jobs digest: saved search preferences + a dev preview endpoint.
+app.use("/api/search-preferences", searchPreferencesRouter);
+app.use("/api/digest", digestRouter);
+
+// File uploads/downloads via pre-signed S3 URLs. Mounted at /api because it
+// serves both /api/files/* and /api/applications/:id/files (auth per-route).
+app.use("/api", filesRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

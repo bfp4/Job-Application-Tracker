@@ -52,6 +52,8 @@ export interface Application {
   jobPostingId: string;
   companyId: string;
   status: ApplicationStatus;
+  resumeS3Key: string | null;
+  coverLetterS3Key: string | null;
   appliedDate: string | null;
   notes: string | null;
   createdAt: string;
@@ -82,4 +84,17 @@ export interface JobSearchPagination {
 /** A follow-up joined with its parent application, used on the dashboard. */
 export interface FollowUpWithApplication extends FollowUp {
   application: Application;
+}
+
+/** A tracked search that feeds the daily recommended-jobs digest. */
+export interface SearchQuery {
+  id: string;
+  userId: string;
+  query: string;
+  location: string;
+  postedWithin: string | null;
+  searchCount: number;
+  lastSearchedAt: string;
+  pinned: boolean;
+  createdAt: string;
 }

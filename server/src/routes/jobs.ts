@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { authenticate } from "../middleware/auth";
 import { ingestJobs } from "../services/jobIngestion";
+import { prisma } from "../lib/prisma";
 import type { JobSearchParams } from "../jobSources/types";
 
 const router = Router();
@@ -87,6 +88,35 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
 
   try {
     const { summary, totalCount, jobs } = await ingestJobs(params);
+
+    // Record this search so it can feed the daily recommendations digest.
+    // Keyed on [userId, query, location]: repeats bump searchCount and recency
+    // instead of creating duplicate rows. Failures here must not break search.
+    try {
+      await prisma.searchQuery.upsert({
+        where: {
+          userId_query_location: {
+            userId: req.user!.id,
+            query: params.query,
+            location: params.location,
+          },
+        },
+        update: {
+          searchCount: { increment: 1 },
+          lastSearchedAt: new Date(),
+          postedWithin: params.postedWithin ?? null,
+        },
+        create: {
+          userId: req.user!.id,
+          query: params.query,
+          location: params.location,
+          postedWithin: params.postedWithin ?? null,
+          lastSearchedAt: new Date(),
+        },
+      });
+    } catch (trackErr) {
+      console.error("Failed to record search query:", trackErr);
+    }
 
     const totalPages = Math.max(1, Math.ceil(totalCount / parsedPageSize));
 

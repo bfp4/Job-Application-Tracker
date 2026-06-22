@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  type ChangeEvent,
   type FormEvent,
 } from "react";
 import Link from "next/link";
@@ -93,6 +94,9 @@ export default function ApplicationDetailPage() {
           error={error}
           onPatch={patchApplication}
           onDeleted={() => router.push("/applications")}
+          onFilesChange={(patch) =>
+            setApplication((prev) => (prev ? { ...prev, ...patch } : prev))
+          }
           onContactsChange={(contacts) =>
             setApplication((prev) => (prev ? { ...prev, contacts } : prev))
           }
@@ -111,6 +115,7 @@ function ApplicationDetail({
   error,
   onPatch,
   onDeleted,
+  onFilesChange,
   onContactsChange,
   onFollowUpsChange,
   onError,
@@ -119,6 +124,7 @@ function ApplicationDetail({
   error: string | null;
   onPatch: (body: Record<string, unknown>) => Promise<void>;
   onDeleted: () => void;
+  onFilesChange: (patch: Partial<Application>) => void;
   onContactsChange: (contacts: Contact[]) => void;
   onFollowUpsChange: (followUps: FollowUp[]) => void;
   onError: (message: string | null) => void;
@@ -277,6 +283,15 @@ function ApplicationDetail({
         />
       </section>
 
+      {/* Documents */}
+      <FilesSection
+        applicationId={application.id}
+        resumeS3Key={application.resumeS3Key}
+        coverLetterS3Key={application.coverLetterS3Key}
+        onChange={onFilesChange}
+        onError={onError}
+      />
+
       {/* Contacts */}
       <ContactsSection
         companyId={application.companyId}
@@ -329,6 +344,217 @@ function ApplicationDetail({
           </button>
         )}
       </section>
+    </div>
+  );
+}
+
+type FileType = "resume" | "coverLetter";
+
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const PDF_CONTENT_TYPE = "application/pdf";
+
+const FILE_LABELS: Record<FileType, string> = {
+  resume: "Resume",
+  coverLetter: "Cover letter",
+};
+
+function FilesSection({
+  applicationId,
+  resumeS3Key,
+  coverLetterS3Key,
+  onChange,
+  onError,
+}: {
+  applicationId: string;
+  resumeS3Key: string | null;
+  coverLetterS3Key: string | null;
+  onChange: (patch: Partial<Application>) => void;
+  onError: (message: string | null) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-gray-900">Documents</h2>
+      <p className="mt-1 text-sm text-gray-500">
+        Upload a PDF resume and cover letter for this application (max 5MB each).
+      </p>
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FileUploadRow
+          applicationId={applicationId}
+          fileType="resume"
+          s3Key={resumeS3Key}
+          onChange={onChange}
+          onError={onError}
+        />
+        <FileUploadRow
+          applicationId={applicationId}
+          fileType="coverLetter"
+          s3Key={coverLetterS3Key}
+          onChange={onChange}
+          onError={onError}
+        />
+      </div>
+    </section>
+  );
+}
+
+function FileUploadRow({
+  applicationId,
+  fileType,
+  s3Key,
+  onChange,
+  onError,
+}: {
+  applicationId: string;
+  fileType: FileType;
+  s3Key: string | null;
+  onChange: (patch: Partial<Application>) => void;
+  onError: (message: string | null) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [justUploaded, setJustUploaded] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const inputId = `file-${fileType}`;
+
+  async function handleSelect(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset the input so selecting the same file again re-triggers onChange.
+    e.target.value = "";
+    if (!file) return;
+
+    onError(null);
+    setJustUploaded(false);
+
+    if (file.type !== PDF_CONTENT_TYPE) {
+      onError(`${FILE_LABELS[fileType]} must be a PDF file.`);
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      onError(`${FILE_LABELS[fileType]} must be 5MB or smaller.`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // 1. Ask the backend for a pre-signed PUT URL.
+      const urlRes = await apiFetch("/api/files/upload-url", {
+        method: "POST",
+        body: JSON.stringify({
+          applicationId,
+          fileType,
+          contentType: PDF_CONTENT_TYPE,
+        }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to start upload.");
+      const { uploadUrl, key } = (await urlRes.json()) as {
+        uploadUrl: string;
+        key: string;
+      };
+
+      // 2. Upload the file bytes directly to S3 (no auth header, raw fetch).
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": PDF_CONTENT_TYPE },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error("Upload to storage failed.");
+
+      // 3. Persist the key on the application.
+      const saveRes = await apiFetch(
+        `/api/applications/${applicationId}/files`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ fileType, s3Key: key }),
+        }
+      );
+      if (!saveRes.ok) throw new Error("Failed to save uploaded file.");
+
+      onChange(
+        fileType === "resume"
+          ? { resumeS3Key: key }
+          : { coverLetterS3Key: key }
+      );
+      setJustUploaded(true);
+    } catch (err) {
+      onError(
+        err instanceof Error
+          ? err.message
+          : `Failed to upload ${FILE_LABELS[fileType].toLowerCase()}.`
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleView() {
+    if (!s3Key) return;
+    setOpening(true);
+    onError(null);
+    try {
+      const res = await apiFetch(
+        `/api/files/${encodeURIComponent(s3Key)}/download-url`
+      );
+      if (!res.ok) throw new Error("Failed to open file.");
+      const { downloadUrl } = (await res.json()) as { downloadUrl: string };
+      window.open(downloadUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      onError(
+        err instanceof Error ? err.message : "Failed to open file."
+      );
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-gray-900">
+          {FILE_LABELS[fileType]}
+        </span>
+        {s3Key ? (
+          <span className="text-xs font-medium text-green-600">Uploaded</span>
+        ) : (
+          <span className="text-xs text-gray-400">Not uploaded</span>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <label
+          htmlFor={inputId}
+          className={`cursor-pointer rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 ${
+            uploading ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
+          {uploading
+            ? "Uploading…"
+            : s3Key
+            ? "Replace PDF"
+            : "Upload PDF"}
+        </label>
+        <input
+          id={inputId}
+          type="file"
+          accept="application/pdf"
+          onChange={handleSelect}
+          disabled={uploading}
+          className="hidden"
+        />
+
+        {s3Key && (
+          <button
+            type="button"
+            onClick={handleView}
+            disabled={opening}
+            className="text-sm font-medium text-gray-600 underline hover:text-gray-900 disabled:opacity-50"
+          >
+            {opening ? "Opening…" : "View"}
+          </button>
+        )}
+
+        {justUploaded && !uploading && (
+          <span className="text-xs text-green-600">Saved ✓</span>
+        )}
+      </div>
     </div>
   );
 }

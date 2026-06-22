@@ -2,6 +2,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" is the local dev machine's engine; "rhel-openssl-3.0.x" is the
+  // Amazon Linux engine the daily digest Lambda needs at runtime. Both are
+  // generated so the same client works locally and when bundled for Lambda.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -18,6 +22,11 @@ enum ApplicationStatus {
   REJECTED
 }
 
+enum DigestStatus {
+  SENT
+  FAILED
+}
+
 model User {
   id          String   @id @default(cuid())
   firebaseUid String   @unique
@@ -28,6 +37,8 @@ model User {
   applications  Application[]
   baseResumes   BaseResume[]
   insightReports InsightReport[]
+  searchQueries  SearchQuery[]
+  digestLogs     DigestLog[]
 }
 
 model Company {
@@ -133,6 +144,34 @@ model InsightReport {
   summary     String
   metrics     Json
   generatedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SearchQuery {
+  id             String   @id @default(cuid())
+  userId         String
+  query          String
+  location       String
+  postedWithin   String?
+  searchCount    Int      @default(1)
+  lastSearchedAt DateTime
+  pinned         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Repeated identical searches increment searchCount instead of duplicating.
+  @@unique([userId, query, location])
+}
+
+model DigestLog {
+  id                    String       @id @default(cuid())
+  userId                String
+  sentAt                DateTime
+  recommendedJobIds     String[]
+  reminderApplicationIds String[]
+  status                DigestStatus
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

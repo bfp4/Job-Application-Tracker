@@ -1,0 +1,25 @@
+{
+  "name": "daily-digest-lambda",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS Lambda that emails each user a daily job digest via SES. Reuses the digest + job-source logic from /server/src.",
+  "main": "index.ts",
+  "scripts": {
+    "test:local": "ts-node --transpile-only testLocal.ts",
+    "build": "node build.js",
+    "package": "npm run build && node zip.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.1073.0",
+    "@prisma/client": "^5.22.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.10.5",
+    "archiver": "^7.0.1",
+    "dotenv": "^16.4.7",
+    "esbuild": "^0.28.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
