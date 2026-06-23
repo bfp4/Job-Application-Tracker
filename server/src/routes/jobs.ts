@@ -2,7 +2,14 @@ import { Router, type Request, type Response } from "express";
 import { authenticate } from "../middleware/auth";
 import { ingestJobs } from "../services/jobIngestion";
 import { prisma } from "../lib/prisma";
-import { selectKeywordFilters } from "../services/keywordSearch";
+import { enrichJobsWithPageText } from "../services/jobPageText";
+import { scoreAndSortJobs } from "../services/jobRelevanceScorer";
+import {
+  buildSearchCacheLookup,
+  getValidSearchCache,
+  saveSearchCache,
+  type CachedSearchJob,
+} from "../services/searchResultsCache";
 import type { JobSearchParams } from "../jobSources/types";
 import type { ResumeKeywords } from "../types/keywords";
 
@@ -14,12 +21,12 @@ type PostedWithin = (typeof VALID_POSTED_WITHIN)[number];
 const VALID_EXPERIENCE_LEVELS = ["entry", "mid", "senior"] as const;
 type ExperienceLevel = (typeof VALID_EXPERIENCE_LEVELS)[number];
 
-const VALID_KEYWORD_MODES = ["or", "and"] as const;
-type KeywordMode = (typeof VALID_KEYWORD_MODES)[number];
-
 const DEFAULT_PAGE = 1;
 const DEFAULT_RESULTS_PER_PAGE = 10;
 const MAX_RESULTS_PER_PAGE = 50;
+
+/** When Smart Search is on, fetch this many Adzuna results to score globally. */
+const SMART_SEARCH_POOL_SIZE = 50;
 
 function isPostedWithin(value: unknown): value is PostedWithin {
   return (
@@ -35,13 +42,6 @@ function isExperienceLevel(value: unknown): value is ExperienceLevel {
   );
 }
 
-function isKeywordMode(value: unknown): value is KeywordMode {
-  return (
-    typeof value === "string" &&
-    (VALID_KEYWORD_MODES as readonly string[]).includes(value)
-  );
-}
-
 function parsePositiveInt(
   value: unknown,
   fallback: number,
@@ -52,6 +52,30 @@ function parsePositiveInt(
   if (!Number.isInteger(n) || n < 1) return null;
   if (max !== undefined && n > max) return null;
   return n;
+}
+
+function filterUntracked<T extends { id: string }>(
+  jobs: T[],
+  trackedPostingIds: Set<string>
+): T[] {
+  return jobs.filter((job) => !trackedPostingIds.has(job.id));
+}
+
+function applyMatchesOnly(jobs: CachedSearchJob[]): CachedSearchJob[] {
+  return jobs.filter((job) => (job.relevanceScore ?? 0) > 0);
+}
+
+function buildPagination(
+  totalCount: number,
+  page: number,
+  pageSize: number
+) {
+  return {
+    page,
+    pageSize,
+    totalCount,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  };
 }
 
 /**
@@ -69,7 +93,8 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
     page,
     resultsPerPage,
     useKeywords,
-    keywordMode,
+    matchesOnly,
+    refresh,
   } = req.body ?? {};
 
   if (typeof query !== "string" || query.trim() === "") {
@@ -94,13 +119,6 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
   if (experienceLevel !== undefined && !isExperienceLevel(experienceLevel)) {
     res.status(400).json({
       error: "`experienceLevel` must be one of 'entry', 'mid', or 'senior'.",
-    });
-    return;
-  }
-
-  if (keywordMode !== undefined && !isKeywordMode(keywordMode)) {
-    res.status(400).json({
-      error: "`keywordMode` must be one of 'or' or 'and'.",
     });
     return;
   }
@@ -132,45 +150,122 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
     ...(experienceLevel ? { experienceLevel } : {}),
   };
 
-  // The user-typed query, preserved so saved-search tracking (which feeds the
-  // daily digest) is never polluted with the keyword-enriched variant.
-  const originalQuery = params.query;
+  const resumeKeywords = req.user!.resumeKeywords as ResumeKeywords | null;
+  const keywordsUsed =
+    useKeywords === true &&
+    req.user!.keywordsEnabled &&
+    resumeKeywords !== null;
+  const matchesOnlyActive = keywordsUsed && matchesOnly === true;
+  const forceRefresh = refresh === true;
 
-  // Smart Search: attach resume keywords as Adzuna what_or / what_and filters.
-  // The user's query stays unchanged.
-  if (useKeywords === true && req.user!.keywordsEnabled) {
-    const keywords = req.user!.resumeKeywords as ResumeKeywords | null;
-    const keywordFilters = selectKeywordFilters(originalQuery, keywords);
-    if (keywordFilters.length > 0) {
-      params.keywordFilters = keywordFilters;
-      params.useKeywords = true;
-      params.keywordMode = keywordMode ?? "or";
-    }
-  }
+  const cacheLookup = buildSearchCacheLookup({
+    userId: req.user!.id,
+    query: params.query,
+    location: params.location,
+    postedWithin: params.postedWithin ?? null,
+    experienceLevel: params.experienceLevel ?? "",
+    keywordsUsed,
+    page: parsedPage,
+    pageSize: parsedPageSize,
+    smartSearchPoolSize: SMART_SEARCH_POOL_SIZE,
+  });
 
   try {
-    const { summary, totalCount, jobs } = await ingestJobs(params);
-
-    const trackedApplications = await prisma.application.findMany({
+    const trackedApplicationsPromise = prisma.application.findMany({
       where: { userId: req.user!.id },
       select: { jobPostingId: true },
     });
+
+    if (!forceRefresh) {
+      const cached = await getValidSearchCache(cacheLookup);
+      if (cached) {
+        const trackedApplications = await trackedApplicationsPromise;
+        const trackedPostingIds = new Set(
+          trackedApplications.map((a) => a.jobPostingId)
+        );
+
+        let jobs = filterUntracked(cached.payload.jobs, trackedPostingIds);
+        if (matchesOnlyActive) {
+          jobs = applyMatchesOnly(jobs);
+        }
+
+        const clientPagination = keywordsUsed;
+        let responseTotalCount = cached.payload.adzunaTotalCount;
+
+        if (keywordsUsed) {
+          responseTotalCount = jobs.length;
+        }
+
+        return res.json({
+          summary: cached.payload.summary,
+          jobs,
+          keywordsUsed,
+          clientPagination,
+          matchesOnly: matchesOnlyActive,
+          cached: true,
+          cachedAt: cached.cachedAt.toISOString(),
+          pagination: buildPagination(
+            responseTotalCount,
+            parsedPage,
+            parsedPageSize
+          ),
+        });
+      }
+    }
+
+    const fetchParams: JobSearchParams = keywordsUsed
+      ? { ...params, page: 1, resultsPerPage: SMART_SEARCH_POOL_SIZE }
+      : params;
+
+    const [{ summary, totalCount: adzunaTotalCount, jobs }, trackedApplications] =
+      await Promise.all([ingestJobs(fetchParams), trackedApplicationsPromise]);
+
     const trackedPostingIds = new Set(
       trackedApplications.map((a) => a.jobPostingId)
     );
-    const untrackedJobs = jobs.filter((job) => !trackedPostingIds.has(job.id));
+    const untrackedJobs = filterUntracked(jobs, trackedPostingIds);
 
-    // Record this search so it can feed the daily recommendations digest.
-    // Keyed on [userId, query, location, experienceLevel]: repeats bump
-    // searchCount and recency instead of creating duplicate rows, while the
-    // same query at different experience levels is tracked separately. Failures
-    // here must not break search.
+    const jobsForScoring = keywordsUsed
+      ? await enrichJobsWithPageText(untrackedJobs)
+      : untrackedJobs;
+
+    const scoredJobs = scoreAndSortJobs(
+      jobsForScoring,
+      keywordsUsed ? resumeKeywords : null,
+      keywordsUsed,
+      { matchesOnly: false }
+    );
+
+    // Cache the full scored/plain pool before matches-only filtering.
+    void saveSearchCache(cacheLookup, {
+      summary,
+      jobs: scoredJobs as CachedSearchJob[],
+      adzunaTotalCount,
+    });
+
+    let pageJobs = scoredJobs;
+    let responseTotalCount = adzunaTotalCount;
+    const clientPagination = keywordsUsed;
+
+    if (matchesOnlyActive) {
+      pageJobs = applyMatchesOnly(pageJobs as CachedSearchJob[]) as typeof pageJobs;
+    }
+
+    if (keywordsUsed) {
+      responseTotalCount = pageJobs.length;
+    }
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(responseTotalCount / parsedPageSize)
+    );
+
     try {
       await prisma.searchQuery.upsert({
         where: {
           userId_query_location_experienceLevel: {
             userId: req.user!.id,
-            query: originalQuery,
+            query: params.query,
             location: params.location,
             experienceLevel: params.experienceLevel ?? "",
           },
@@ -182,7 +277,7 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
         },
         create: {
           userId: req.user!.id,
-          query: originalQuery,
+          query: params.query,
           location: params.location,
           postedWithin: params.postedWithin ?? null,
           experienceLevel: params.experienceLevel ?? "",
@@ -193,15 +288,17 @@ router.post("/search", authenticate, async (req: Request, res: Response) => {
       console.error("Failed to record search query:", trackErr);
     }
 
-    const totalPages = Math.max(1, Math.ceil(totalCount / parsedPageSize));
-
     res.json({
       summary,
-      jobs: untrackedJobs,
+      jobs: pageJobs,
+      keywordsUsed,
+      clientPagination,
+      matchesOnly: matchesOnlyActive,
+      cached: false,
       pagination: {
         page: parsedPage,
         pageSize: parsedPageSize,
-        totalCount,
+        totalCount: responseTotalCount,
         totalPages,
       },
     });

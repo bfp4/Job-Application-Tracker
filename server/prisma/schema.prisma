@@ -45,6 +45,7 @@ model User {
   baseResumes   BaseResume[]
   insightReports InsightReport[]
   searchQueries  SearchQuery[]
+  searchResultsCaches SearchResultsCache[]
   digestLogs     DigestLog[]
 }
 
@@ -174,6 +175,28 @@ model SearchQuery {
   // experienceLevel is part of the key so the same query at different seniority
   // levels is tracked as a distinct saved search.
   @@unique([userId, query, location, experienceLevel])
+}
+
+// Cached job search responses — avoids re-fetching Adzuna and re-scraping job
+// pages when the same query is run again within 24 hours.
+model SearchResultsCache {
+  id              String   @id @default(cuid())
+  userId          String
+  query           String
+  location        String
+  postedWithin    String   @default("")
+  experienceLevel String   @default("")
+  keywordsUsed    Boolean
+  page            Int
+  pageSize        Int
+  payload         Json
+  cachedAt        DateTime @default(now())
+  expiresAt       DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, query, location, postedWithin, experienceLevel, keywordsUsed, page, pageSize])
+  @@index([expiresAt])
 }
 
 model DigestLog {

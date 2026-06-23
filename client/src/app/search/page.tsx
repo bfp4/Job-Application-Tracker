@@ -31,22 +31,39 @@ const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 10;
 
-type KeywordMode = "or" | "and";
-const KEYWORD_MODE_STORAGE_KEY = "jobSearchKeywordMode";
-
-function readStoredKeywordMode(): KeywordMode {
-  if (typeof window === "undefined") return "or";
-  const stored = localStorage.getItem(KEYWORD_MODE_STORAGE_KEY);
-  return stored === "and" ? "and" : "or";
-}
+const MAX_KEYWORD_CHIPS = 4;
 
 type TrackState = "idle" | "tracking" | "error";
+
+/** A search result enriched with the server's keyword relevance scoring. */
+type ScoredJobPosting = JobPosting & {
+  relevanceScore?: number;
+  matchedKeywords?: string[];
+};
 
 function pageNumbers(current: number, total: number): number[] {
   if (total <= 1) return [1];
   const start = Math.max(1, current - 2);
   const end = Math.min(total, current + 2);
   return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
+
+function paginateJobs<T>(items: T[], page: number, pageSize: number): T[] {
+  const start = (page - 1) * pageSize;
+  return items.slice(start, start + pageSize);
+}
+
+function buildPagination(
+  totalCount: number,
+  page: number,
+  pageSize: number
+): JobSearchPagination {
+  return {
+    page,
+    pageSize,
+    totalCount,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  };
 }
 
 export default function SearchPage() {
@@ -56,13 +73,18 @@ export default function SearchPage() {
   const [experienceLevel, setExperienceLevel] =
     useState<ExperienceLevel | null>(null);
 
-  const [jobs, setJobs] = useState<JobPosting[] | null>(null);
+  const [jobs, setJobs] = useState<ScoredJobPosting[] | null>(null);
+  /** Full ranked pool from Smart Search — paginated client-side. */
+  const [rankedPool, setRankedPool] = useState<ScoredJobPosting[] | null>(null);
+  const [keywordsUsed, setKeywordsUsed] = useState(false);
   const [pagination, setPagination] = useState<JobSearchPagination | null>(
     null
   );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [hasSearched, setHasSearched] = useState(false);
+  const [resultsCached, setResultsCached] = useState(false);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,16 +94,11 @@ export default function SearchPage() {
   // Smart Search: resume keywords are appended to the query server-side.
   const [keywords, setKeywords] = useState<ResumeKeywords | null>(null);
   const [smartSearch, setSmartSearch] = useState(false);
-  const [keywordMode, setKeywordMode] = useState<KeywordMode>("or");
   const [savingPref, setSavingPref] = useState(false);
   const [showKeywords, setShowKeywords] = useState(false);
 
   const hasKeywords =
     keywords !== null && keywords.technologies.length > 0;
-
-  useEffect(() => {
-    setKeywordMode(readStoredKeywordMode());
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,16 +140,12 @@ export default function SearchPage() {
     }
   }
 
-  function handleKeywordModeChange(mode: KeywordMode) {
-    setKeywordMode(mode);
-    localStorage.setItem(KEYWORD_MODE_STORAGE_KEY, mode);
-  }
-
   const runSearch = useCallback(
     async (options?: {
       page?: number;
       pageSize?: number;
       resetTrack?: boolean;
+      refresh?: boolean;
     }) => {
       const targetPage = options?.page ?? page;
       const targetPageSize = options?.pageSize ?? pageSize;
@@ -140,6 +153,8 @@ export default function SearchPage() {
       setError(null);
       setLoading(true);
       if (options?.resetTrack) setTrackState({});
+
+      const smartSearchActive = smartSearch && hasKeywords;
 
       try {
         const res = await apiFetch("/api/jobs/search", {
@@ -151,9 +166,8 @@ export default function SearchPage() {
             resultsPerPage: targetPageSize,
             ...(postedWithin !== "any" ? { postedWithin } : {}),
             ...(experienceLevel ? { experienceLevel } : {}),
-            ...(smartSearch && hasKeywords
-              ? { useKeywords: true, keywordMode }
-              : {}),
+            useKeywords: smartSearchActive,
+            ...(options?.refresh ? { refresh: true } : {}),
           }),
         });
 
@@ -163,19 +177,42 @@ export default function SearchPage() {
         }
 
         const data = (await res.json()) as {
-          jobs: JobPosting[];
+          jobs: ScoredJobPosting[];
+          keywordsUsed?: boolean;
+          clientPagination?: boolean;
+          cached?: boolean;
+          cachedAt?: string;
           pagination: JobSearchPagination;
         };
 
-        setJobs(data.jobs);
-        setPagination(data.pagination);
-        setPage(data.pagination.page);
-        setPageSize(data.pagination.pageSize);
+        setResultsCached(data.cached ?? false);
+        setCachedAt(data.cachedAt ?? null);
+
+        if (data.clientPagination) {
+          setRankedPool(data.jobs);
+          setKeywordsUsed(true);
+          setPage(targetPage);
+          setPageSize(targetPageSize);
+          setJobs(paginateJobs(data.jobs, targetPage, targetPageSize));
+          setPagination(
+            buildPagination(data.jobs.length, targetPage, targetPageSize)
+          );
+        } else {
+          setRankedPool(null);
+          setJobs(data.jobs);
+          setKeywordsUsed(data.keywordsUsed ?? false);
+          setPagination(data.pagination);
+          setPage(data.pagination.page);
+          setPageSize(data.pagination.pageSize);
+        }
         setHasSearched(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Search failed.");
         setJobs(null);
+        setRankedPool(null);
         setPagination(null);
+        setResultsCached(false);
+        setCachedAt(null);
       } finally {
         setLoading(false);
       }
@@ -189,7 +226,6 @@ export default function SearchPage() {
       pageSize,
       smartSearch,
       hasKeywords,
-      keywordMode,
     ]
   );
 
@@ -208,6 +244,14 @@ export default function SearchPage() {
     ) {
       return;
     }
+
+    if (rankedPool) {
+      setPage(nextPage);
+      setJobs(paginateJobs(rankedPool, nextPage, pageSize));
+      setPagination(buildPagination(rankedPool.length, nextPage, pageSize));
+      return;
+    }
+
     setPage(nextPage);
     runSearch({ page: nextPage });
   }
@@ -215,9 +259,15 @@ export default function SearchPage() {
   function handlePageSizeChange(nextSize: number) {
     setPageSize(nextSize);
     setPage(1);
-    if (hasSearched) {
-      runSearch({ page: 1, pageSize: nextSize });
+    if (!hasSearched) return;
+
+    if (rankedPool) {
+      setJobs(paginateJobs(rankedPool, 1, nextSize));
+      setPagination(buildPagination(rankedPool.length, 1, nextSize));
+      return;
     }
+
+    runSearch({ page: 1, pageSize: nextSize });
   }
 
   async function handleTrack(jobPostingId: string) {
@@ -228,7 +278,17 @@ export default function SearchPage() {
         body: JSON.stringify({ jobPostingId }),
       });
       if (!res.ok) throw new Error("Failed to track job.");
-      setJobs((prev) => prev?.filter((job) => job.id !== jobPostingId) ?? prev);
+      if (rankedPool) {
+        const next = rankedPool.filter((job) => job.id !== jobPostingId);
+        const newTotalPages = Math.max(1, Math.ceil(next.length / pageSize));
+        const newPage = Math.min(page, newTotalPages);
+        setRankedPool(next);
+        setPage(newPage);
+        setJobs(paginateJobs(next, newPage, pageSize));
+        setPagination(buildPagination(next.length, newPage, pageSize));
+      } else {
+        setJobs((prev) => prev?.filter((job) => job.id !== jobPostingId) ?? prev);
+      }
       setTrackState((prev) => {
         const next = { ...prev };
         delete next[jobPostingId];
@@ -309,42 +369,6 @@ export default function SearchPage() {
                   </p>
                 </div>
               )}
-
-              <div className="mt-4">
-                <p className="text-xs font-medium text-gray-700">
-                  Keyword matching
-                </p>
-                <div className="mt-1.5 inline-flex rounded-md border border-gray-300 p-0.5">
-                  <button
-                    type="button"
-                    aria-pressed={keywordMode === "or"}
-                    onClick={() => handleKeywordModeChange("or")}
-                    className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
-                      keywordMode === "or"
-                        ? "bg-violet-600 text-white"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    Broad (OR)
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={keywordMode === "and"}
-                    onClick={() => handleKeywordModeChange("and")}
-                    className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
-                      keywordMode === "and"
-                        ? "bg-violet-600 text-white"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    Strict (AND)
-                  </button>
-                </div>
-                <p className="mt-1.5 text-xs text-gray-400">
-                  Broad finds more jobs matching any of your skills. Strict finds
-                  fewer jobs but all must match your top 3 skills.
-                </p>
-              </div>
             </div>
           )}
         </div>
@@ -481,9 +505,34 @@ export default function SearchPage() {
         {jobs && jobs.length > 0 && (
           <div className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-gray-600">
-                Showing {rangeStart}–{rangeEnd} of {totalCount} results
-              </p>
+              <div>
+                <p className="text-sm text-gray-600">
+                  Showing {rangeStart}–{rangeEnd} of {totalCount} results
+                </p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {keywordsUsed
+                    ? "Sorted by relevance to your skills"
+                    : "Sorted by date"}
+                  {resultsCached && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        onClick={() => runSearch({ refresh: true })}
+                        disabled={loading}
+                        className="text-violet-600 hover:text-violet-800 disabled:opacity-50"
+                        title={
+                          cachedAt
+                            ? `Cached at ${new Date(cachedAt).toLocaleString()}`
+                            : undefined
+                        }
+                      >
+                        Cached results — refresh
+                      </button>
+                    </>
+                  )}
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <label
                   htmlFor="pageSize"
@@ -512,6 +561,10 @@ export default function SearchPage() {
             <ul className="space-y-3">
               {jobs.map((job) => {
                 const state = trackState[job.id] ?? "idle";
+                const matched =
+                  keywordsUsed && job.matchedKeywords
+                    ? job.matchedKeywords
+                    : [];
                 return (
                   <li
                     key={job.id}
@@ -522,6 +575,23 @@ export default function SearchPage() {
                         <h2 className="font-medium text-gray-900">
                           {job.title}
                         </h2>
+                        {matched.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {matched.slice(0, MAX_KEYWORD_CHIPS).map((kw) => (
+                              <span
+                                key={kw}
+                                className="inline-flex items-center rounded-md bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-200"
+                              >
+                                {kw}
+                              </span>
+                            ))}
+                            {matched.length > MAX_KEYWORD_CHIPS && (
+                              <span className="inline-flex items-center text-xs font-medium text-gray-400">
+                                +{matched.length - MAX_KEYWORD_CHIPS} more
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <p className="mt-0.5 text-sm text-gray-600">
                           {job.company?.name ?? "Unknown company"}
                           {job.location ? ` · ${job.location}` : ""}
@@ -544,7 +614,7 @@ export default function SearchPage() {
                         </p>
                       </div>
 
-                      <div className="shrink-0">
+                      <div className="flex shrink-0 flex-col items-end gap-2">
                         <button
                           type="button"
                           onClick={() => handleTrack(job.id)}

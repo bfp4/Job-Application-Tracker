@@ -56,9 +56,6 @@ interface AdzunaSearchResponse {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const MAX_KEYWORDS_OR = 6;
-const MAX_KEYWORDS_AND = 3;
-
 export const adzunaSource: JobSource = {
   name: "adzuna",
 
@@ -102,38 +99,7 @@ export const adzunaSource: JobSource = {
       );
     }
 
-    // Smart Search: resume keyword filters. `what` stays the job title only.
-    // Never set both what_and and what_or in the same request.
-    if (params.keywordFilters && params.keywordFilters.length > 0) {
-      const mode = params.keywordMode ?? "or";
-
-      if (mode === "and") {
-        const andKeywords = params.keywordFilters
-          .slice(0, MAX_KEYWORDS_AND)
-          .join(" ");
-        search.set("what_and", andKeywords);
-        console.log(`[adzuna] keyword mode: AND | what_and: '${andKeywords}'`);
-      } else {
-        const orKeywords = params.keywordFilters
-          .slice(0, MAX_KEYWORDS_OR)
-          .join(" ");
-        search.set("what_or", orKeywords);
-        console.log(`[adzuna] keyword mode: OR  | what_or: '${orKeywords}'`);
-      }
-    }
-
     const url = `${ADZUNA_BASE_URL}/${country}/search/${page}?${search.toString()}`;
-
-    console.log("[adzuna] request:", {
-      endpoint: `${ADZUNA_BASE_URL}/${country}/search/${page}`,
-      what: search.get("what"),
-      what_or: search.get("what_or") ?? null,
-      what_and: search.get("what_and") ?? null,
-      where: search.get("where"),
-      results_per_page: search.get("results_per_page"),
-      max_days_old: search.get("max_days_old") ?? null,
-      what_exclude: search.get("what_exclude") ?? null,
-    });
 
     const response = await fetchWithRetry(url);
 

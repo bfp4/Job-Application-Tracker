@@ -26,21 +26,6 @@ export interface JobSearchParams {
    * adapters with no equivalent mechanism.
    */
   experienceLevel?: "entry" | "mid" | "senior";
-  /**
-   * When true, the route handler has already attached resume keywords via
-   * {@link keywordFilters} for Smart Search enrichment.
-   */
-  useKeywords?: boolean;
-  /**
-   * Resume keywords passed to adapters as optional filters (Adzuna `what_or` /
-   * `what_and`). The main {@link query} stays the user's job title only.
-   */
-  keywordFilters?: string[];
-  /**
-   * How resume keywords are matched: `or` = any keyword (broad, default),
-   * `and` = all top keywords must appear (strict).
-   */
-  keywordMode?: "or" | "and";
 }
 
 /** A single job normalized into our canonical shape, source-agnostic. */

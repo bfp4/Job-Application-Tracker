@@ -86,11 +86,17 @@ export async function ingestJobs(
   const jobs =
     postingIds.length === 0
       ? []
-      : await prisma.jobPosting.findMany({
-          where: { id: { in: postingIds } },
-          include: { company: true },
-          orderBy: { postedDate: "desc" },
-        });
+      : await (async () => {
+          const rows = await prisma.jobPosting.findMany({
+            where: { id: { in: postingIds } },
+            include: { company: true },
+          });
+          const byId = new Map(rows.map((row) => [row.id, row]));
+          // Preserve the source fetch order (postingIds), not DB sort order.
+          return postingIds
+            .map((id) => byId.get(id))
+            .filter((row): row is NonNullable<typeof row> => row !== undefined);
+        })();
 
   return { summary, totalCount, jobs };
 }
