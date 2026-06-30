@@ -176,46 +176,6 @@ export interface FollowUpWithApplication extends FollowUp {
   application: Application;
 }
 
-/** Aggregated application statistics powering the insights dashboard. */
-export interface AggregatedStats {
-  totalApplications: number;
-  byStatus: Record<string, number>;
-  responseRate: number;
-  bySource: Record<string, number>;
-  avgDaysToResponse: number | null;
-  topCompanies: Array<{ name: string; count: number }>;
-  applicationsByWeek: Array<{ week: string; count: number }>;
-  statusProgressionRate: Record<string, number>;
-  topSearchQueries: Array<{ query: string; location: string; score: number }>;
-  dueFollowUps: number;
-  overdueFollowUps: number;
-}
-
-export type InsightType = "positive" | "warning" | "suggestion" | "neutral";
-
-/** A single AI-generated insight. */
-export interface Insight {
-  title: string;
-  insight: string;
-  type: InsightType;
-}
-
-/** Response shape from GET /api/insights. */
-export interface InsightsResponse {
-  insights: Insight[];
-  stats: AggregatedStats;
-  generatedAt: string;
-  aiError: boolean;
-}
-
-/** A persisted insight report from GET /api/insights/history. */
-export interface InsightReport {
-  id: string;
-  generatedAt: string;
-  insights: Insight[];
-  stats: AggregatedStats;
-}
-
 /** A tracked search that feeds the daily recommended-jobs digest. */
 export interface SearchQuery {
   id: string;

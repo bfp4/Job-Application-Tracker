@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { JobPosting } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { jobSources } from "../jobSources";
@@ -145,8 +146,35 @@ async function persistJob(job: NormalizedJob): Promise<{
 }
 
 /** Company has no unique name constraint, so match-then-create manually. */
-async function findOrCreateCompany(name: string) {
+export async function findOrCreateCompany(name: string) {
   const existing = await prisma.company.findFirst({ where: { name } });
   if (existing) return existing;
   return prisma.company.create({ data: { name } });
+}
+
+export interface ManualJobInput {
+  companyName: string;
+  title: string;
+  jobUrl?: string | null;
+  location?: string | null;
+  description?: string | null;
+}
+
+/** Creates a user-entered job posting not sourced from a job board. */
+export async function createManualJobPosting(
+  input: ManualJobInput
+): Promise<JobPosting> {
+  const company = await findOrCreateCompany(input.companyName.trim());
+
+  return prisma.jobPosting.create({
+    data: {
+      companyId: company.id,
+      title: input.title.trim(),
+      source: "manual",
+      externalId: randomUUID(),
+      jobUrl: input.jobUrl?.trim() || null,
+      location: input.location?.trim() || null,
+      description: input.description?.trim() || null,
+    },
+  });
 }

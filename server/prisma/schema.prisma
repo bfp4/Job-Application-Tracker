@@ -43,7 +43,6 @@ model User {
   contacts      Contact[]
   applications  Application[]
   baseResumes   BaseResume[]
-  insightReports InsightReport[]
   searchQueries  SearchQuery[]
   searchResultsCaches SearchResultsCache[]
   digestLogs     DigestLog[]
@@ -145,16 +144,6 @@ model TailoredResume {
 
   application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   baseResume  BaseResume  @relation(fields: [baseResumeId], references: [id], onDelete: Cascade)
-}
-
-model InsightReport {
-  id          String   @id @default(cuid())
-  userId      String
-  summary     String
-  metrics     Json
-  generatedAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SearchQuery {
