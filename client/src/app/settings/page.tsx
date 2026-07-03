@@ -1,82 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import AppShell from "@/components/AppShell";
-import BaseResumeSection from "@/components/BaseResumeSection";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import { useAuth } from "@/context/AuthContext";
-import type { SearchQuery } from "@/lib/types";
+import type { BaseResume } from "@/lib/types";
 
 export default function SettingsPage() {
-  const { user, loading: authLoading } = useAuth();
-
-  const [searches, setSearches] = useState<SearchQuery[]>([]);
+  const [baseResume, setBaseResume] = useState<BaseResume | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (authLoading || !user) return;
-
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await apiFetch("/api/search-preferences");
-        if (!res.ok) throw new Error("Failed to load search preferences.");
-        const data = (await res.json()) as { searches: SearchQuery[] };
-        if (!cancelled) setSearches(data.searches);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoading, user]);
-
-  async function handleTogglePin(search: SearchQuery) {
-    setBusyId(search.id);
+  async function loadData() {
+    setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/search-preferences/${search.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ pinned: !search.pinned }),
-      });
-      if (!res.ok) throw new Error("Failed to update search.");
-      const data = (await res.json()) as { search: SearchQuery };
-      setSearches((prev) =>
-        prev.map((s) => (s.id === search.id ? data.search : s))
-      );
+      const resumeRes = await apiFetch("/api/resumes/base");
+      const resumeData = (await resumeRes.json()) as { baseResume: BaseResume | null };
+      setBaseResume(resumeData.baseResume);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update search.");
+      setError(err instanceof Error ? err.message : "Failed to load settings.");
     } finally {
-      setBusyId(null);
+      setLoading(false);
     }
   }
 
-  async function handleRemove(search: SearchQuery) {
-    setBusyId(search.id);
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/search-preferences/${search.id}`, {
-        method: "DELETE",
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await apiFetch("/api/resumes/base", {
+        method: "POST",
+        body: formData,
       });
-      if (!res.ok && res.status !== 204) {
-        throw new Error("Failed to remove search.");
-      }
-      setSearches((prev) => prev.filter((s) => s.id !== search.id));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error ?? "Failed to upload resume.");
+      setBaseResume(data.baseResume);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove search.");
+      setError(err instanceof Error ? err.message : "Failed to upload resume.");
     } finally {
-      setBusyId(null);
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -86,91 +61,48 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage your resume and job search preferences.
+            Upload your resume for storage. Job search is temporarily unavailable.
           </p>
         </div>
 
-        <section>
-          <h2 className="text-lg font-semibold text-gray-900">
-            Search preferences
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">
-            We use your most frequent recent searches to recommend jobs each
-            morning. Pin a search to always include it regardless of how often
-            you use it.
-          </p>
+        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-          {error && (
-            <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-              {error}
+        {loading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : (
+          <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Base resume</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Upload a PDF resume. It will be stored securely until job search is re-enabled.
+            </p>
+
+            <div className="mt-4 flex items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                onChange={handleFileSelected}
+                disabled={uploading}
+                className="text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-800"
+              />
+              {uploading && <span className="text-sm text-gray-500">Uploading…</span>}
             </div>
-          )}
 
-          <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm">
-            {loading ? (
-              <p className="p-6 text-center text-sm text-gray-500">
-                Loading your searches…
-              </p>
-            ) : searches.length === 0 ? (
-              <p className="p-6 text-center text-sm text-gray-500">
-                No searches yet. Run a job search and it&apos;ll show up here.
-              </p>
+            {baseResume ? (
+              <div className="mt-6 space-y-4 border-t border-gray-100 pt-4">
+                <p className="text-sm text-gray-700">Resume on file.</p>
+                <p className="text-xs text-gray-500">
+                  Uploaded {formatDate(baseResume.createdAt)}
+                </p>
+                <p className="text-sm text-amber-800">
+                  Job search is temporarily unavailable while resume handling is being updated.
+                </p>
+              </div>
             ) : (
-              <ul className="divide-y divide-gray-100">
-                {searches.map((search) => {
-                  const busy = busyId === search.id;
-                  return (
-                    <li
-                      key={search.id}
-                      className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900">
-                          {search.query}
-                          <span className="font-normal text-gray-500">
-                            {" · "}
-                            {search.location}
-                          </span>
-                          {search.pinned && (
-                            <span className="ml-2 inline-flex items-center rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
-                              Pinned
-                            </span>
-                          )}
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          Searched {search.searchCount}{" "}
-                          {search.searchCount === 1 ? "time" : "times"} · last on{" "}
-                          {formatDate(search.lastSearchedAt)}
-                        </p>
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePin(search)}
-                          disabled={busy}
-                          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          {search.pinned ? "Unpin" : "Pin"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(search)}
-                          disabled={busy}
-                          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <p className="mt-4 text-sm text-gray-500">No resume uploaded yet.</p>
             )}
-          </div>
-        </section>
-
-        <BaseResumeSection />
+          </section>
+        )}
       </div>
     </AppShell>
   );

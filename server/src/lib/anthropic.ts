@@ -1,95 +1,150 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+const MODEL = "claude-sonnet-5";
+const MAX_WEB_SEARCH_CONTINUATIONS = 5;
+
+let client: Anthropic | null = null;
+
+function getClient(): Anthropic {
+  if (client) return client;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("Missing ANTHROPIC_API_KEY in the server environment.");
+  }
+  client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return client;
+}
+
+interface StructuredOptions {
+  system: string;
+  prompt: string;
+  schema: Record<string, unknown>;
+  maxTokens?: number;
+}
+
 /**
- * Claude model used for both resume parsing and tailoring.
+ * Structured outputs guarantees the response's *final* text block conforms to
+ * the schema — earlier text blocks may exist (e.g. a stated plan before tool
+ * calls), so this takes the last one, not the first.
  */
-export const CLAUDE_MODEL = "claude-sonnet-4-6";
-
-// Lazily construct the Anthropic client so the server can boot without an API
-// key configured; the first AI call validates the environment and throws if it
-// is missing.
-let cached: Anthropic | null = null;
-
-export function getAnthropic(): Anthropic {
-  if (cached) return cached;
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+function extractStructuredJson<T>(response: Anthropic.Message): T {
+  const textBlocks = response.content.filter(
+    (block): block is Anthropic.TextBlock => block.type === "text"
+  );
+  const lastText = textBlocks[textBlocks.length - 1];
+  if (!lastText) {
     throw new Error(
-      "Missing ANTHROPIC_API_KEY. Set it in the server environment to enable " +
-        "AI resume parsing and tailoring."
+      `Claude response had no text block (stop_reason: ${response.stop_reason}).`
     );
   }
-
-  cached = new Anthropic({ apiKey });
-  return cached;
+  return JSON.parse(lastText.text) as T;
 }
 
 /**
- * Concatenates the text content blocks of a Claude message into a single string.
+ * Single-shot Claude call constrained to a JSON schema via structured outputs.
+ * Used for resume parsing and search-strategy generation.
  */
-function textFromMessage(message: Anthropic.Message): string {
-  return message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
+export async function generateStructured<T>(opts: StructuredOptions): Promise<T> {
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: opts.maxTokens ?? 4096,
+    system: opts.system,
+    output_config: {
+      format: { type: "json_schema", schema: opts.schema },
+    },
+    messages: [{ role: "user", content: opts.prompt }],
+  });
+
+  return extractStructuredJson<T>(response);
+}
+
+interface WebSearchStructuredOptions extends StructuredOptions {
+  maxSearches?: number;
+  maxFetches?: number;
+}
+
+export interface AgentTraceEntry {
+  tool: string;
+  input: unknown;
+}
+
+export interface WebSearchAgentResult<T> {
+  result: T;
+  /** The model's stated plan, if it produced leading text before its first tool call. */
+  plan: string | null;
+  /** Every server-executed tool call made across the run, in order. */
+  trace: AgentTraceEntry[];
 }
 
 /**
- * Removes a surrounding markdown code fence (```json ... ``` or ``` ... ```) if
- * the model wrapped its JSON despite being told not to.
+ * Claude call with the server-side web_search and web_fetch tools enabled,
+ * constrained to a JSON schema via structured outputs. This is a single
+ * adaptive agentic loop — Claude searches, reads what it finds, and decides
+ * its next move in real time, rather than following a pre-committed query
+ * list. Both tools are server-executed, so no client-side tool loop is
+ * needed — but the server-side loop caps at 10 iterations per request, so a
+ * `pause_turn` stop reason means it hit that cap mid-task and the request
+ * must be resent to let it continue.
  */
-function stripCodeFence(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith("```")) return trimmed;
-  return trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-}
+export async function generateWithWebSearch<T>(
+  opts: WebSearchStructuredOptions
+): Promise<WebSearchAgentResult<T>> {
+  const anthropic = getClient();
+  const tools: Anthropic.ToolUnion[] = [
+    {
+      type: "web_search_20260209",
+      name: "web_search",
+      max_uses: opts.maxSearches ?? 15,
+    },
+    {
+      type: "web_fetch_20260209",
+      name: "web_fetch",
+      max_uses: opts.maxFetches ?? 10,
+    },
+  ];
+  const requestBase = {
+    model: MODEL,
+    max_tokens: opts.maxTokens ?? 16000,
+    system: opts.system,
+    tools,
+    output_config: {
+      format: { type: "json_schema" as const, schema: opts.schema },
+    },
+  };
 
-/**
- * Sends a prompt to Claude and parses the response as JSON of type T.
- *
- * If the first response is malformed (not valid JSON, or rejected by the
- * optional `validate` callback), the call is retried exactly once before the
- * error propagates to the caller.
- */
-export async function generateJson<T>(params: {
-  prompt: string;
-  maxTokens: number;
-  validate?: (value: unknown) => value is T;
-}): Promise<T> {
-  const client = getAnthropic();
-  let lastError: unknown;
+  const messages: Anthropic.MessageParam[] = [
+    { role: "user", content: opts.prompt },
+  ];
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const message = await client.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: params.maxTokens,
-        messages: [{ role: "user", content: params.prompt }],
-      });
+  let response = await anthropic.messages.create({ ...requestBase, messages });
+  const allBlocks: Anthropic.ContentBlock[] = [...response.content];
 
-      const raw = stripCodeFence(textFromMessage(message));
-      const parsed = JSON.parse(raw) as unknown;
+  let continuations = 0;
+  while (
+    response.stop_reason === "pause_turn" &&
+    continuations < MAX_WEB_SEARCH_CONTINUATIONS
+  ) {
+    messages.push({
+      role: "assistant",
+      content: response.content as unknown as Anthropic.MessageParam["content"],
+    });
+    response = await anthropic.messages.create({ ...requestBase, messages });
+    allBlocks.push(...response.content);
+    continuations += 1;
+  }
 
-      if (params.validate && !params.validate(parsed)) {
-        throw new Error("Claude response did not match the expected shape.");
-      }
+  let plan: string | null = null;
+  let sawToolUse = false;
+  const trace: AgentTraceEntry[] = [];
 
-      return parsed as T;
-    } catch (err) {
-      lastError = err;
-      if (attempt === 1) {
-        console.warn(
-          "Claude JSON generation failed, retrying once:",
-          err instanceof Error ? err.message : err
-        );
-      }
+  for (const block of allBlocks) {
+    if (block.type === "server_tool_use") {
+      sawToolUse = true;
+      trace.push({ tool: block.name, input: block.input });
+    } else if (block.type === "text" && !sawToolUse && plan === null) {
+      const trimmed = block.text.trim();
+      if (trimmed) plan = trimmed;
     }
   }
 
-  throw lastError ?? new Error("Claude returned malformed JSON.");
+  return { result: extractStructuredJson<T>(response), plan, trace };
 }

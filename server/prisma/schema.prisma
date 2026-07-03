@@ -1,16 +1,73 @@
-// Prisma schema for the Job Application Tracker (Phase 1: local Postgres)
-
 generator client {
   provider = "prisma-client-js"
-  // "native" is the local dev machine's engine; "rhel-openssl-3.0.x" is the
-  // Amazon Linux engine the daily digest Lambda needs at runtime. Both are
-  // generated so the same client works locally and when bundled for Lambda.
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  firebaseUid  String        @unique
+  email        String        @unique
+  createdAt    DateTime      @default(now())
+  baseResumes  BaseResume[]
+  searchRuns   SearchRun[]
+  applications Application[]
+}
+
+model BaseResume {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
+  pdfS3Key   String
+  parsed     Json
+  createdAt  DateTime    @default(now())
+  searchRuns SearchRun[]
+
+  @@index([userId])
+}
+
+// A logged invocation of the merged strategy+search agent — since the search
+// is a non-deterministic adaptive loop, this trace (not the prompt text) is
+// what explains what a given run actually did.
+model SearchRun {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  baseResumeId String
+  baseResume   BaseResume @relation(fields: [baseResumeId], references: [id])
+  runAt        DateTime   @default(now())
+  resultCount  Int
+  // The agent's stated plan before it began searching, if produced.
+  plan         String?
+  // Ordered list of server-tool calls (web_search/web_fetch queries and URLs) made during the run.
+  trace        Json?
+
+  @@index([userId])
+}
+
+model Company {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  website     String?
+  jobPostings JobPosting[]
+}
+
+model JobPosting {
+  id           String        @id @default(cuid())
+  companyId    String?
+  company      Company?      @relation(fields: [companyId], references: [id])
+  title        String
+  location     String?
+  jobUrl       String        @unique
+  description  String?
+  matchScore   Int?
+  matchReasons String[]
+  postedDate   DateTime?
+  fetchedAt    DateTime      @default(now())
+  applications Application[]
 }
 
 enum ApplicationStatus {
@@ -22,179 +79,30 @@ enum ApplicationStatus {
   REJECTED
 }
 
-enum DigestStatus {
-  SENT
-  FAILED
-}
-
-model User {
-  id          String   @id @default(cuid())
-  firebaseUid String   @unique
-  email       String   @unique
-  createdAt   DateTime @default(now())
-
-  // Keywords extracted from the user's most recent base resume (see
-  // keywordExtractor.ts), stored as a ResumeKeywords-shaped JSON blob and used
-  // to enrich job searches. Null until the first extraction succeeds.
-  resumeKeywords  Json?
-  // Whether resume keywords are appended to searches ("Smart Search" toggle).
-  keywordsEnabled Boolean @default(true)
-
-  contacts      Contact[]
-  applications  Application[]
-  baseResumes   BaseResume[]
-  searchQueries  SearchQuery[]
-  searchResultsCaches SearchResultsCache[]
-  digestLogs     DigestLog[]
-}
-
-model Company {
-  id        String   @id @default(cuid())
-  name      String
-  website   String?
-  createdAt DateTime @default(now())
-
-  jobPostings  JobPosting[]
-  contacts     Contact[]
-  applications Application[]
-}
-
-model JobPosting {
-  id          String    @id @default(cuid())
-  companyId   String
-  title       String
-  description String?
-  location    String?
-  jobUrl      String?
-  source      String
-  externalId  String
-  postedDate  DateTime?
-  fetchedAt   DateTime  @default(now())
-
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  applications Application[]
-
-  @@unique([source, externalId])
-}
-
-model Contact {
-  id          String  @id @default(cuid())
-  companyId   String
-  userId      String
-  name        String
-  role        String?
-  email       String?
-  linkedinUrl String?
-  notes       String?
-
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
 model Application {
-  id               String            @id @default(cuid())
-  userId           String
-  jobPostingId     String
-  companyId        String
-  status           ApplicationStatus @default(NOT_APPLIED)
-  resumeS3Key      String?
-  coverLetterS3Key String?
-  appliedDate      DateTime?
-  notes            String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  jobPostingId String
+  jobPosting   JobPosting        @relation(fields: [jobPostingId], references: [id])
+  status       ApplicationStatus @default(NOT_APPLIED)
+  notes        String?
+  appliedDate  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  followUps    FollowUp[]
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  followUps       FollowUp[]
-  tailoredResumes TailoredResume[]
+  @@unique([userId, jobPostingId])
+  @@index([userId])
 }
 
 model FollowUp {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
   followUpDate  DateTime
   note          String?
-  completed     Boolean  @default(false)
+  completed     Boolean     @default(false)
 
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-}
-
-model BaseResume {
-  id        String   @id @default(cuid())
-  userId    String
-  content   Json
-  pdfS3Key  String?
-  createdAt DateTime @default(now())
-
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tailoredResumes TailoredResume[]
-}
-
-model TailoredResume {
-  id              String   @id @default(cuid())
-  applicationId   String
-  baseResumeId    String
-  tailoredContent Json
-  pdfS3Key        String?
-  aiNotes         String?
-  createdAt       DateTime @default(now())
-
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  baseResume  BaseResume  @relation(fields: [baseResumeId], references: [id], onDelete: Cascade)
-}
-
-model SearchQuery {
-  id              String   @id @default(cuid())
-  userId          String
-  query           String
-  location        String
-  postedWithin    String?
-  experienceLevel String?
-  searchCount     Int      @default(1)
-  lastSearchedAt  DateTime
-  pinned          Boolean  @default(false)
-  createdAt       DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Repeated identical searches increment searchCount instead of duplicating.
-  // experienceLevel is part of the key so the same query at different seniority
-  // levels is tracked as a distinct saved search.
-  @@unique([userId, query, location, experienceLevel])
-}
-
-// Cached job search responses — avoids re-fetching Adzuna and re-scraping job
-// pages when the same query is run again within 24 hours.
-model SearchResultsCache {
-  id              String   @id @default(cuid())
-  userId          String
-  query           String
-  location        String
-  postedWithin    String   @default("")
-  experienceLevel String   @default("")
-  keywordsUsed    Boolean
-  page            Int
-  pageSize        Int
-  payload         Json
-  cachedAt        DateTime @default(now())
-  expiresAt       DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, query, location, postedWithin, experienceLevel, keywordsUsed, page, pageSize])
-  @@index([expiresAt])
-}
-
-model DigestLog {
-  id                    String       @id @default(cuid())
-  userId                String
-  sentAt                DateTime
-  recommendedJobIds     String[]
-  reminderApplicationIds String[]
-  status                DigestStatus
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([applicationId])
 }

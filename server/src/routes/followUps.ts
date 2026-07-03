@@ -13,8 +13,8 @@ function parseDate(value: unknown): Date | undefined {
 
 /**
  * PATCH /api/follow-ups/:id
- * Toggle completed and/or edit the note/date. Ownership is enforced through the
- * parent application's userId.
+ * Toggle completed and/or edit the note/date. Ownership is enforced through
+ * the parent application's userId.
  */
 router.patch("/:id", authenticate, async (req: Request, res: Response) => {
   const { completed, note, followUpDate } = req.body ?? {};

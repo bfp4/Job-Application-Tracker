@@ -45,22 +45,15 @@ export default function SignUpPage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-gray-900">Create account</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Start tracking your job applications.
-        </p>
+        <p className="mt-1 text-sm text-gray-500">Start tracking your job applications.</p>
 
         {error && (
-          <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
+          <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
         <form onSubmit={handleEmailSignUp} className="mt-6 space-y-4">
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
-            >
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email
             </label>
             <input
@@ -74,10 +67,7 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
-            >
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
               Password
             </label>
             <input

@@ -45,7 +45,6 @@ export async function authenticate(
     const firebaseUid = decoded.uid;
     const email = decoded.email ?? null;
 
-    // Find by firebaseUid; create on first sight.
     let user = await prisma.user.findUnique({ where: { firebaseUid } });
 
     if (!user) {
@@ -57,8 +56,6 @@ export async function authenticate(
       }
 
       user = await prisma.user.upsert({
-        // Match an existing record by email (e.g. created during seeding),
-        // otherwise create a fresh one. Keeps firebaseUid in sync either way.
         where: { email },
         update: { firebaseUid },
         create: { firebaseUid, email },

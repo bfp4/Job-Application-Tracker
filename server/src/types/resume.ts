@@ -1,10 +1,6 @@
 /**
- * Structured representation of a resume.
- *
- * Both BaseResume.content and TailoredResume.tailoredContent are stored as JSON
- * matching this shape. The AI parser (resumeParser) produces it from raw PDF
- * text, and the AI tailor (resumeTailor) rewrites it for a specific job while
- * preserving the exact same shape.
+ * Structured representation of a resume, produced by the resume parser agent
+ * from raw PDF text. Stored as BaseResume.parsed.
  */
 
 export interface ResumePersonalInfo {
@@ -46,20 +42,11 @@ export interface ResumeProject {
   bullets: string[];
 }
 
-export interface ResumeLeadership {
-  organization: string;
-  role: string;
-  startDate: string;
-  endDate: string | null;
-  bullets: string[];
-}
-
-export interface ResumeStructure {
+export interface ResumeProfile {
   personalInfo: ResumePersonalInfo;
   summary: string | null;
   experience: ResumeExperience[];
   education: ResumeEducation[];
   skills: ResumeSkills;
   projects: ResumeProject[];
-  leadership: ResumeLeadership[];
 }

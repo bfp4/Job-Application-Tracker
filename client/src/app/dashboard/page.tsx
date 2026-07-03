@@ -8,11 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { STATUS_ORDER, statusBadgeClasses, statusLabel } from "@/lib/status";
 import { useAuth } from "@/context/AuthContext";
-import type {
-  Application,
-  ApplicationStatus,
-  FollowUpWithApplication,
-} from "@/lib/types";
+import type { Application, ApplicationStatus, FollowUpWithApplication } from "@/lib/types";
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
@@ -64,8 +60,7 @@ export default function DashboardPage() {
       }
     }
     return items.sort(
-      (a, b) =>
-        new Date(a.followUpDate).getTime() - new Date(b.followUpDate).getTime()
+      (a, b) => new Date(a.followUpDate).getTime() - new Date(b.followUpDate).getTime()
     );
   }, [applications]);
 
@@ -79,17 +74,12 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         {loading ? (
           <p className="text-sm text-gray-500">Loading your dashboard…</p>
         ) : (
           <>
-            {/* Quick actions */}
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/search"
@@ -105,22 +95,16 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            {/* Stats */}
             <section>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
                     Total applications
                   </p>
-                  <p className="mt-1 text-2xl font-semibold text-gray-900">
-                    {applications.length}
-                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">{applications.length}</p>
                 </div>
                 {STATUS_ORDER.map((status) => (
-                  <div
-                    key={status}
-                    className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-                  >
+                  <div key={status} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${statusBadgeClasses(
                         status
@@ -128,19 +112,14 @@ export default function DashboardPage() {
                     >
                       {statusLabel(status)}
                     </span>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">
-                      {statusCounts[status]}
-                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-gray-900">{statusCounts[status]}</p>
                   </div>
                 ))}
               </div>
             </section>
 
-            {/* Upcoming follow-ups */}
             <section>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Upcoming follow-ups
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900">Upcoming follow-ups</h2>
               <div className="mt-3 rounded-xl border border-gray-200 bg-white shadow-sm">
                 {upcomingFollowUps.length === 0 ? (
                   <p className="p-6 text-center text-sm text-gray-500">
@@ -156,27 +135,19 @@ export default function DashboardPage() {
                         >
                           <div className="min-w-0">
                             <p className="font-medium text-gray-900">
-                              {followUp.application.company?.name ?? "—"}
+                              {followUp.application.jobPosting?.company?.name ?? "—"}
                               <span className="font-normal text-gray-500">
                                 {" "}
-                                ·{" "}
-                                {followUp.application.jobPosting?.title ??
-                                  "Role"}
+                                · {followUp.application.jobPosting?.title ?? "Role"}
                               </span>
                             </p>
                             {followUp.note && (
-                              <p className="mt-0.5 truncate text-sm text-gray-500">
-                                {followUp.note}
-                              </p>
+                              <p className="mt-0.5 truncate text-sm text-gray-500">{followUp.note}</p>
                             )}
                           </div>
                           <div className="flex shrink-0 items-center gap-3">
-                            <StatusBadge
-                              status={followUp.application.status}
-                            />
-                            <span className="text-sm text-gray-500">
-                              {formatDate(followUp.followUpDate)}
-                            </span>
+                            <StatusBadge status={followUp.application.status} />
+                            <span className="text-sm text-gray-500">{formatDate(followUp.followUpDate)}</span>
                           </div>
                         </Link>
                       </li>

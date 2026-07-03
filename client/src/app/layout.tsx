@@ -4,7 +4,7 @@ import { AuthProvider } from "@/context/AuthContext";
 
 export const metadata: Metadata = {
   title: "Job Application Tracker",
-  description: "AI-powered job application tracker",
+  description: "Job Application Tracker",
 };
 
 export default function RootLayout({

@@ -13,9 +13,9 @@ interface S3Config {
   bucket: string;
 }
 
-// Lazily build the S3 client so the server can still boot (auth, jobs,
-// applications, etc.) before AWS credentials are configured. The first call to
-// an S3 helper validates the environment and throws if anything is missing.
+// Lazily build the S3 client so the server can still boot before AWS
+// credentials are configured. The first call to an S3 helper validates the
+// environment and throws if anything is missing.
 let cached: S3Config | null = null;
 
 function getS3(): S3Config {
@@ -55,9 +55,8 @@ function getS3(): S3Config {
 }
 
 /**
- * Uploads a buffer to S3 from the server (as opposed to the pre-signed PUT flow
- * used by the frontend). Used for resume PDFs that are processed server-side:
- * the original uploaded resume and the AI-rendered tailored resume.
+ * Uploads a buffer to S3 from the server. Used for resume PDFs uploaded via
+ * multipart form data and processed server-side.
  */
 export async function uploadBuffer(
   key: string,
@@ -75,28 +74,8 @@ export async function uploadBuffer(
 }
 
 /**
- * Returns a pre-signed PUT URL (valid for 5 minutes) so the frontend can upload
- * a file directly to S3 without routing the bytes through Express.
- */
-export async function getUploadUrl(
-  key: string,
-  contentType: string
-): Promise<string> {
-  const { client, bucket } = getS3();
-  const command = new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    ContentType: contentType,
-  });
-  return getSignedUrl(client, command, { expiresIn: UPLOAD_URL_TTL_SECONDS });
-}
-
-/**
- * Returns a pre-signed GET URL (valid for 15 minutes) so the frontend can
- * view/download a stored file.
- *
- * Pass `downloadFilename` to force the browser to download the file (via a
- * Content-Disposition: attachment header) instead of rendering it inline.
+ * Returns a pre-signed GET URL so the frontend can view/download a stored
+ * file without routing the bytes through Express.
  */
 export async function getDownloadUrl(
   key: string,

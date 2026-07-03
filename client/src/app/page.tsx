@@ -11,10 +11,10 @@ export default function Home() {
   useEffect(() => {
     if (loading) return;
     router.replace(user ? "/dashboard" : "/login");
-  }, [user, loading, router]);
+  }, [loading, user, router]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50">
+    <main className="flex min-h-screen items-center justify-center">
       <p className="text-sm text-gray-500">Loading…</p>
     </main>
   );
