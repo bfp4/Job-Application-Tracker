@@ -2,6 +2,11 @@ import { Router, type Request, type Response } from "express";
 import { ApplicationStatus, Prisma } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { getObjectText } from "../lib/s3";
+import {
+  generateResumeTips,
+  jobPostingFingerprint,
+} from "../services/resumeTips";
 
 const router = Router();
 
@@ -209,6 +214,122 @@ router.delete("/:id", authenticate, async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Failed to delete application:", err);
     res.status(500).json({ error: "Failed to delete application." });
+  }
+});
+
+/**
+ * Loads everything the resume-tips endpoints need: the application (with
+ * posting + company), the saved analysis if any, the user's latest resume,
+ * and whether the saved analysis is still current for that resume + posting.
+ */
+async function loadResumeTipsContext(userId: string, applicationId: string) {
+  const application = await prisma.application.findFirst({
+    where: { id: applicationId, userId },
+    include: {
+      jobPosting: { include: { company: true } },
+      resumeAnalysis: true,
+    },
+  });
+
+  if (!application) return null;
+
+  const baseResume = await prisma.baseResume.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const currentHash = jobPostingFingerprint(application.jobPosting);
+  const analysis = application.resumeAnalysis;
+  const upToDate = Boolean(
+    analysis &&
+      baseResume &&
+      analysis.baseResumeId === baseResume.id &&
+      analysis.jobPostingHash === currentHash
+  );
+
+  return { application, analysis, baseResume, currentHash, upToDate };
+}
+
+/**
+ * GET /api/applications/:id/resume-tips
+ * Returns the saved analysis (if any) plus whether it's still current —
+ * the client uses `upToDate` to disable the regenerate button.
+ */
+router.get("/:id/resume-tips", authenticate, async (req: Request, res: Response) => {
+  try {
+    const ctx = await loadResumeTipsContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    res.json({
+      analysis: ctx.analysis ?? null,
+      upToDate: ctx.upToDate,
+      hasResume: Boolean(ctx.baseResume),
+    });
+  } catch (err) {
+    console.error("Failed to fetch resume tips:", err);
+    res.status(500).json({ error: "Failed to fetch resume tips." });
+  }
+});
+
+/**
+ * POST /api/applications/:id/resume-tips
+ * Generates (or regenerates) the analysis. Refused with 409 while the saved
+ * analysis is still current — a re-run is only allowed once the resume or
+ * the posting's content has changed.
+ */
+router.post("/:id/resume-tips", authenticate, async (req: Request, res: Response) => {
+  try {
+    const ctx = await loadResumeTipsContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    if (!ctx.baseResume) {
+      res.status(400).json({
+        error: "Upload a resume in Settings before generating tips.",
+      });
+      return;
+    }
+
+    if (ctx.upToDate) {
+      res.status(409).json({
+        error:
+          "This analysis is already up to date. Update your resume or the job posting to run a new one.",
+        analysis: ctx.analysis,
+        upToDate: true,
+      });
+      return;
+    }
+
+    const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
+    const content = await generateResumeTips(
+      resumeMarkdown,
+      ctx.application.jobPosting
+    );
+
+    const analysis = await prisma.resumeAnalysis.upsert({
+      where: { applicationId: ctx.application.id },
+      update: {
+        baseResumeId: ctx.baseResume.id,
+        jobPostingHash: ctx.currentHash,
+        content: content as unknown as Prisma.InputJsonValue,
+      },
+      create: {
+        applicationId: ctx.application.id,
+        baseResumeId: ctx.baseResume.id,
+        jobPostingHash: ctx.currentHash,
+        content: content as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    res.status(201).json({ analysis, upToDate: true, hasResume: true });
+  } catch (err) {
+    console.error("Failed to generate resume tips:", err);
+    res.status(500).json({ error: "Failed to generate resume tips." });
   }
 });
 

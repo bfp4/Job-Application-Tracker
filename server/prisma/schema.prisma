@@ -18,13 +18,14 @@ model User {
 }
 
 model BaseResume {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  pdfS3Key      String
-  markdownS3Key String
-  parsed        Json
-  createdAt     DateTime @default(now())
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id])
+  pdfS3Key       String
+  markdownS3Key  String
+  parsed         Json
+  createdAt      DateTime         @default(now())
+  resumeAnalyses ResumeAnalysis[]
 
   @@index([userId])
 }
@@ -78,12 +79,28 @@ model Application {
   status       ApplicationStatus @default(NOT_APPLIED)
   notes        String?
   appliedDate  DateTime?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  followUps    FollowUp[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  followUps      FollowUp[]
+  resumeAnalysis ResumeAnalysis?
 
   @@unique([userId, jobPostingId])
   @@index([userId])
+}
+
+// One saved resume-tips analysis per application. baseResumeId and
+// jobPostingHash record what the analysis was generated from, so a re-run is
+// only allowed once the resume or the posting's content has actually changed.
+model ResumeAnalysis {
+  id             String      @id @default(cuid())
+  applicationId  String      @unique
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  baseResumeId   String
+  baseResume     BaseResume  @relation(fields: [baseResumeId], references: [id])
+  jobPostingHash String
+  content        Json
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
 
 model FollowUp {

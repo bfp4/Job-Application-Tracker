@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
+import ResumeTipsSection from "@/components/ResumeTipsSection";
 import { apiFetch } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
@@ -222,6 +223,8 @@ export default function ApplicationDetailPage() {
                 />
               </div>
             </div>
+
+            <ResumeTipsSection applicationId={id} />
 
             <FollowUpsSection
               followUps={application.followUps ?? []}

@@ -56,6 +56,31 @@ export interface BaseResume {
   createdAt: string;
 }
 
+/** The structured advice produced by the resume-tips agent. */
+export interface ResumeTipsContent {
+  summary: string;
+  technologiesToStudy: { name: string; reason: string }[];
+  missingFromResume: string[];
+  bulletPointSuggestions: {
+    current: string | null;
+    suggested: string;
+    reason: string;
+  }[];
+  strengthsToHighlight: string[];
+  additionalTips: string[];
+}
+
+/** A saved resume-tips analysis for one application. */
+export interface ResumeAnalysis {
+  id: string;
+  applicationId: string;
+  baseResumeId: string;
+  jobPostingHash: string;
+  content: ResumeTipsContent;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A follow-up joined with its parent application, used on the dashboard. */
 export interface FollowUpWithApplication extends FollowUp {
   application: Application;
