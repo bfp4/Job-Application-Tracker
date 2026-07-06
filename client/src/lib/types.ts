@@ -14,21 +14,18 @@ export interface Company {
 
 export interface JobPosting {
   id: string;
+  userId: string;
   companyId: string | null;
   title: string;
   description: string | null;
-  location: string | null;
+  location: string[];
+  salary: string | null;
   jobUrl: string;
   matchScore: number | null;
   matchReasons: string[];
   postedDate: string | null;
   fetchedAt: string;
   company?: Company | null;
-}
-
-/** A job posting result annotated with whether the user already tracks it. */
-export interface SearchResultJob extends JobPosting {
-  isTracked: boolean;
 }
 
 export interface FollowUp {
@@ -57,17 +54,6 @@ export interface BaseResume {
   userId: string;
   pdfS3Key: string | null;
   createdAt: string;
-}
-
-/** A logged invocation of the merged strategy+search agent, for debugging. */
-export interface SearchRun {
-  id: string;
-  userId: string;
-  baseResumeId: string;
-  runAt: string;
-  resultCount: number;
-  plan: string | null;
-  trace: unknown;
 }
 
 /** A follow-up joined with its parent application, used on the dashboard. */

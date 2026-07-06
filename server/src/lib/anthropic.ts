@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL = "claude-sonnet-5";
-const MAX_WEB_SEARCH_CONTINUATIONS = 5;
+/** Cheaper model for mechanical, non-judgment work (e.g. reformatting existing text into JSON). */
+export const CHEAP_MODEL = "claude-haiku-4-5-20251001";
 
 let client: Anthropic | null = null;
 
@@ -19,6 +20,8 @@ interface StructuredOptions {
   prompt: string;
   schema: Record<string, unknown>;
   maxTokens?: number;
+  /** Defaults to MODEL. Override for cheap, non-judgment work (e.g. reformatting existing text into JSON). */
+  model?: string;
 }
 
 /**
@@ -45,7 +48,7 @@ function extractStructuredJson<T>(response: Anthropic.Message): T {
  */
 export async function generateStructured<T>(opts: StructuredOptions): Promise<T> {
   const response = await getClient().messages.create({
-    model: MODEL,
+    model: opts.model ?? MODEL,
     max_tokens: opts.maxTokens ?? 4096,
     system: opts.system,
     output_config: {
@@ -55,96 +58,4 @@ export async function generateStructured<T>(opts: StructuredOptions): Promise<T>
   });
 
   return extractStructuredJson<T>(response);
-}
-
-interface WebSearchStructuredOptions extends StructuredOptions {
-  maxSearches?: number;
-  maxFetches?: number;
-}
-
-export interface AgentTraceEntry {
-  tool: string;
-  input: unknown;
-}
-
-export interface WebSearchAgentResult<T> {
-  result: T;
-  /** The model's stated plan, if it produced leading text before its first tool call. */
-  plan: string | null;
-  /** Every server-executed tool call made across the run, in order. */
-  trace: AgentTraceEntry[];
-}
-
-/**
- * Claude call with the server-side web_search and web_fetch tools enabled,
- * constrained to a JSON schema via structured outputs. This is a single
- * adaptive agentic loop — Claude searches, reads what it finds, and decides
- * its next move in real time, rather than following a pre-committed query
- * list. Both tools are server-executed, so no client-side tool loop is
- * needed — but the server-side loop caps at 10 iterations per request, so a
- * `pause_turn` stop reason means it hit that cap mid-task and the request
- * must be resent to let it continue.
- */
-export async function generateWithWebSearch<T>(
-  opts: WebSearchStructuredOptions
-): Promise<WebSearchAgentResult<T>> {
-  const anthropic = getClient();
-  const tools: Anthropic.ToolUnion[] = [
-    {
-      type: "web_search_20260209",
-      name: "web_search",
-      max_uses: opts.maxSearches ?? 15,
-    },
-    {
-      type: "web_fetch_20260209",
-      name: "web_fetch",
-      max_uses: opts.maxFetches ?? 10,
-    },
-  ];
-  const requestBase = {
-    model: MODEL,
-    max_tokens: opts.maxTokens ?? 16000,
-    system: opts.system,
-    tools,
-    output_config: {
-      format: { type: "json_schema" as const, schema: opts.schema },
-    },
-  };
-
-  const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: opts.prompt },
-  ];
-
-  let response = await anthropic.messages.create({ ...requestBase, messages });
-  const allBlocks: Anthropic.ContentBlock[] = [...response.content];
-
-  let continuations = 0;
-  while (
-    response.stop_reason === "pause_turn" &&
-    continuations < MAX_WEB_SEARCH_CONTINUATIONS
-  ) {
-    messages.push({
-      role: "assistant",
-      content: response.content as unknown as Anthropic.MessageParam["content"],
-    });
-    response = await anthropic.messages.create({ ...requestBase, messages });
-    allBlocks.push(...response.content);
-    continuations += 1;
-  }
-
-  let plan: string | null = null;
-  let sawToolUse = false;
-  const trace: AgentTraceEntry[] = [];
-
-  for (const block of allBlocks) {
-    if (block.type === "server_tool_use") {
-      sawToolUse = true;
-      trace.push({ tool: block.name, input: block.input });
-    } else if (block.type === "text" && !sawToolUse && plan === null) {
-      const trimmed = block.text.trim();
-      if (trimmed) plan = trimmed;
-    }
-  }
-
-  return { result: extractStructuredJson<T>(response), plan, trace };
 }

@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
-import { apiFetch } from "@/lib/api";
+import LocationInput from "@/components/LocationInput";
+import CompanyInput from "@/components/CompanyInput";
+import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { useAuth } from "@/context/AuthContext";
-import type { Application, ApplicationStatus } from "@/lib/types";
+import type { Application, ApplicationStatus, JobPosting } from "@/lib/types";
 
 export default function ApplicationsPage() {
   const router = useRouter();
@@ -18,6 +20,15 @@ export default function ApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [jobUrl, setJobUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [locations, setLocations] = useState<string[]>([]);
+  const [salary, setSalary] = useState("");
+  const [description, setDescription] = useState("");
+  const [addingJob, setAddingJob] = useState(false);
+  const [addJobError, setAddJobError] = useState<string | null>(null);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -39,6 +50,42 @@ export default function ApplicationsPage() {
       void loadApplications();
     }
   }, [authLoading, user, loadApplications]);
+
+  async function handleAddJob(e: FormEvent) {
+    e.preventDefault();
+    if (!jobUrl.trim() || !title.trim() || !companyName.trim()) return;
+
+    setAddingJob(true);
+    setAddJobError(null);
+    try {
+      const { jobPosting } = await apiJson<{ jobPosting: JobPosting }>("/api/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          jobUrl: jobUrl.trim(),
+          title: title.trim(),
+          companyName: companyName.trim(),
+          location: locations,
+          salary: salary.trim() || null,
+          description: description.trim() || null,
+        }),
+      });
+      const { application } = await apiJson<{ application: Application }>("/api/applications", {
+        method: "POST",
+        body: JSON.stringify({ jobPostingId: jobPosting.id }),
+      });
+      setJobUrl("");
+      setTitle("");
+      setCompanyName("");
+      setLocations([]);
+      setSalary("");
+      setDescription("");
+      router.push(`/applications/${application.id}`);
+    } catch (err) {
+      setAddJobError(err instanceof Error ? err.message : "Failed to add job.");
+    } finally {
+      setAddingJob(false);
+    }
+  }
 
   const applicationsByStatus = useMemo(() => {
     const grouped = {} as Record<ApplicationStatus, Application[]>;
@@ -65,20 +112,119 @@ export default function ApplicationsPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Applications</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Track and manage every role you&apos;re pursuing.
-            </p>
-          </div>
-          <Link
-            href="/search"
-            className="shrink-0 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-          >
-            Find jobs
-          </Link>
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Applications</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Track and manage every role you&apos;re pursuing.
+          </p>
         </div>
+
+        <form
+          onSubmit={handleAddJob}
+          className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+        >
+          <h2 className="text-sm font-medium text-gray-700">Add a job</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Enter the posting&apos;s details to add it to your tracker.
+          </p>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label htmlFor="jobUrl" className="block text-xs font-medium text-gray-700">
+                Job URL
+              </label>
+              <input
+                id="jobUrl"
+                type="url"
+                required
+                value={jobUrl}
+                onChange={(e) => setJobUrl(e.target.value)}
+                placeholder="https://…"
+                disabled={addingJob}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="title" className="block text-xs font-medium text-gray-700">
+                Title
+              </label>
+              <input
+                id="title"
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={addingJob}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="companyName" className="block text-xs font-medium text-gray-700">
+                Company
+              </label>
+              <div className="mt-1">
+                <CompanyInput
+                  id="companyName"
+                  required
+                  value={companyName}
+                  onChange={setCompanyName}
+                  disabled={addingJob}
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="location" className="block text-xs font-medium text-gray-700">
+                Location
+              </label>
+              <div className="mt-1">
+                <LocationInput
+                  id="location"
+                  value={locations}
+                  onChange={setLocations}
+                  disabled={addingJob}
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="salary" className="block text-xs font-medium text-gray-700">
+                Salary
+              </label>
+              <input
+                id="salary"
+                type="text"
+                value={salary}
+                onChange={(e) => setSalary(e.target.value)}
+                disabled={addingJob}
+                placeholder="e.g. $120k–$150k, or DOE"
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="description" className="block text-xs font-medium text-gray-700">
+                Description
+              </label>
+              <textarea
+                id="description"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={addingJob}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={addingJob || !jobUrl.trim() || !title.trim() || !companyName.trim()}
+              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {addingJob ? "Adding…" : "Add job"}
+            </button>
+            {addJobError && <p className="text-sm text-red-700">{addJobError}</p>}
+          </div>
+        </form>
 
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
@@ -87,14 +233,8 @@ export default function ApplicationsPage() {
         {!loading && applications.length === 0 && (
           <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
             <p className="text-sm text-gray-500">
-              No applications yet — go find some jobs that match your resume.
+              No applications yet — add a job above to get started.
             </p>
-            <Link
-              href="/search"
-              className="mt-4 inline-block rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-            >
-              Search jobs
-            </Link>
           </div>
         )}
 

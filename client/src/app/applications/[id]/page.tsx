@@ -158,8 +158,18 @@ export default function ApplicationDetailPage() {
                   </h1>
                   <p className="mt-1 text-sm text-gray-600">
                     {application.jobPosting?.company?.name ?? "—"}
-                    {application.jobPosting?.location ? ` · ${application.jobPosting.location}` : ""}
+                    {application.jobPosting?.location?.length
+                      ? ` · ${application.jobPosting.location.join(", ")}`
+                      : ""}
                   </p>
+                  {application.jobPosting?.salary && (
+                    <p className="mt-1 text-sm text-gray-600">{application.jobPosting.salary}</p>
+                  )}
+                  {application.jobPosting?.description && (
+                    <p className="mt-3 whitespace-pre-line text-sm text-gray-600">
+                      {application.jobPosting.description}
+                    </p>
+                  )}
                   {application.jobPosting?.jobUrl && (
                     <a
                       href={application.jobPosting.jobUrl}

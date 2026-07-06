@@ -4,9 +4,12 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { useAuth } from "@/context/AuthContext";
 import type { BaseResume } from "@/lib/types";
 
 export default function SettingsPage() {
+  const { user, loading: authLoading } = useAuth();
+
   const [baseResume, setBaseResume] = useState<BaseResume | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -28,8 +31,9 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
+    if (authLoading || !user) return;
     void loadData();
-  }, []);
+  }, [authLoading, user]);
 
   async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -60,9 +64,7 @@ export default function SettingsPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Upload your resume for storage. Job search is temporarily unavailable.
-          </p>
+          <p className="mt-1 text-sm text-gray-500">Manage your resume.</p>
         </div>
 
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -73,7 +75,7 @@ export default function SettingsPage() {
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900">Base resume</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Upload a PDF resume. It will be stored securely until job search is re-enabled.
+              Upload a PDF resume. It will be stored securely.
             </p>
 
             <div className="mt-4 flex items-center gap-3">
@@ -89,14 +91,9 @@ export default function SettingsPage() {
             </div>
 
             {baseResume ? (
-              <div className="mt-6 space-y-4 border-t border-gray-100 pt-4">
+              <div className="mt-6 space-y-1 border-t border-gray-100 pt-4">
                 <p className="text-sm text-gray-700">Resume on file.</p>
-                <p className="text-xs text-gray-500">
-                  Uploaded {formatDate(baseResume.createdAt)}
-                </p>
-                <p className="text-sm text-amber-800">
-                  Job search is temporarily unavailable while resume handling is being updated.
-                </p>
+                <p className="text-xs text-gray-500">Uploaded {formatDate(baseResume.createdAt)}</p>
               </div>
             ) : (
               <p className="mt-4 text-sm text-gray-500">No resume uploaded yet.</p>

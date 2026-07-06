@@ -2,9 +2,9 @@ import "dotenv/config";
 import express, { Request, Response } from "express";
 import cors from "cors";
 import resumesRouter from "./routes/resumes";
-import searchRouter from "./routes/search";
 import applicationsRouter from "./routes/applications";
 import followUpsRouter from "./routes/followUps";
+import jobsRouter from "./routes/jobs";
 
 const app = express();
 
@@ -23,9 +23,9 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.use("/api/resumes", resumesRouter);
-app.use("/api/search", searchRouter);
 app.use("/api/applications", applicationsRouter);
 app.use("/api/follow-ups", followUpsRouter);
+app.use("/api/jobs", jobsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

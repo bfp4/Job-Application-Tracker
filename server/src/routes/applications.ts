@@ -91,8 +91,9 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
   }
 
   try {
-    const jobPosting = await prisma.jobPosting.findUnique({
-      where: { id: jobPostingId },
+    // Postings are per-user; treat another user's posting as nonexistent.
+    const jobPosting = await prisma.jobPosting.findFirst({
+      where: { id: jobPostingId, userId: req.user!.id },
     });
 
     if (!jobPosting) {

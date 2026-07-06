@@ -4,6 +4,7 @@ import multer from "multer";
 import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { uploadBuffer } from "../lib/s3";
+import { convertPdfToMarkdown } from "../lib/pdfToMarkdown";
 
 const router = Router();
 
@@ -69,14 +70,23 @@ router.post("/base", authenticate, async (req: Request, res: Response) => {
   }
 
   try {
-    const key = `resumes/${req.user!.id}/base-${Date.now()}.pdf`;
-    await uploadBuffer(key, file.buffer, PDF_CONTENT_TYPE);
+    const timestamp = Date.now();
+    const pdfKey = `resumes/${req.user!.id}/base-${timestamp}.pdf`;
+    const markdownKey = `resumes/${req.user!.id}/base-${timestamp}.md`;
+
+    const markdown = await convertPdfToMarkdown(file.buffer);
+
+    await Promise.all([
+      uploadBuffer(pdfKey, file.buffer, PDF_CONTENT_TYPE),
+      uploadBuffer(markdownKey, Buffer.from(markdown, "utf-8"), "text/markdown"),
+    ]);
 
     const baseResume = await prisma.baseResume.create({
       data: {
         userId: req.user!.id,
         parsed: {} as Prisma.InputJsonValue,
-        pdfS3Key: key,
+        pdfS3Key: pdfKey,
+        markdownS3Key: markdownKey,
       },
     });
 

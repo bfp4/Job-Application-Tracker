@@ -13,37 +13,18 @@ model User {
   email        String        @unique
   createdAt    DateTime      @default(now())
   baseResumes  BaseResume[]
-  searchRuns   SearchRun[]
   applications Application[]
+  jobPostings  JobPosting[]
 }
 
 model BaseResume {
-  id         String      @id @default(cuid())
-  userId     String
-  user       User        @relation(fields: [userId], references: [id])
-  pdfS3Key   String
-  parsed     Json
-  createdAt  DateTime    @default(now())
-  searchRuns SearchRun[]
-
-  @@index([userId])
-}
-
-// A logged invocation of the merged strategy+search agent — since the search
-// is a non-deterministic adaptive loop, this trace (not the prompt text) is
-// what explains what a given run actually did.
-model SearchRun {
-  id           String     @id @default(cuid())
-  userId       String
-  user         User       @relation(fields: [userId], references: [id])
-  baseResumeId String
-  baseResume   BaseResume @relation(fields: [baseResumeId], references: [id])
-  runAt        DateTime   @default(now())
-  resultCount  Int
-  // The agent's stated plan before it began searching, if produced.
-  plan         String?
-  // Ordered list of server-tool calls (web_search/web_fetch queries and URLs) made during the run.
-  trace        Json?
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  pdfS3Key      String
+  markdownS3Key String
+  parsed        Json
+  createdAt     DateTime @default(now())
 
   @@index([userId])
 }
@@ -55,19 +36,28 @@ model Company {
   jobPostings JobPosting[]
 }
 
+// Postings are scoped to the user who entered them — the same jobUrl entered
+// by two users produces two independent rows, so no user can rewrite what
+// another user sees.
 model JobPosting {
   id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
   companyId    String?
   company      Company?      @relation(fields: [companyId], references: [id])
   title        String
-  location     String?
-  jobUrl       String        @unique
+  location     String[]      @default([])
+  salary       String?
+  jobUrl       String
   description  String?
   matchScore   Int?
   matchReasons String[]
   postedDate   DateTime?
   fetchedAt    DateTime      @default(now())
   applications Application[]
+
+  @@unique([userId, jobUrl])
+  @@index([userId])
 }
 
 enum ApplicationStatus {
