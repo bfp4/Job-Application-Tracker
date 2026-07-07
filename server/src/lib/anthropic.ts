@@ -1,8 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL = "claude-sonnet-5";
-/** Cheaper model for mechanical, non-judgment work (e.g. reformatting existing text into JSON). */
-export const CHEAP_MODEL = "claude-haiku-4-5-20251001";
 
 let client: Anthropic | null = null;
 
@@ -20,8 +18,6 @@ interface StructuredOptions {
   prompt: string;
   schema: Record<string, unknown>;
   maxTokens?: number;
-  /** Defaults to MODEL. Override for cheap, non-judgment work (e.g. reformatting existing text into JSON). */
-  model?: string;
 }
 
 /**
@@ -30,6 +26,15 @@ interface StructuredOptions {
  * calls), so this takes the last one, not the first.
  */
 function extractStructuredJson<T>(response: Anthropic.Message): T {
+  // A response cut off by max_tokens carries truncated, unparseable JSON —
+  // fail with the real cause instead of a cryptic JSON.parse error. (On this
+  // model adaptive thinking shares the max_tokens budget, so give headroom.)
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      "Claude response was truncated by max_tokens before the structured output completed."
+    );
+  }
+
   const textBlocks = response.content.filter(
     (block): block is Anthropic.TextBlock => block.type === "text"
   );
@@ -44,11 +49,10 @@ function extractStructuredJson<T>(response: Anthropic.Message): T {
 
 /**
  * Single-shot Claude call constrained to a JSON schema via structured outputs.
- * Used for resume parsing and search-strategy generation.
  */
 export async function generateStructured<T>(opts: StructuredOptions): Promise<T> {
   const response = await getClient().messages.create({
-    model: opts.model ?? MODEL,
+    model: MODEL,
     max_tokens: opts.maxTokens ?? 4096,
     system: opts.system,
     output_config: {

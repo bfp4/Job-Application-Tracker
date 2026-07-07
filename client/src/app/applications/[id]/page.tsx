@@ -9,11 +9,9 @@ import ResumeTipsSection from "@/components/ResumeTipsSection";
 import { apiFetch } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
+import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
 import type { Application, ApplicationStatus, FollowUp } from "@/lib/types";
-
-const inputClassName =
-  "rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none";
 
 export default function ApplicationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -103,13 +101,24 @@ export default function ApplicationDetailPage() {
     }
   }
 
+  // Follow-up mutations patch local state from the response instead of
+  // re-fetching the whole application graph on every toggle.
+  function setFollowUps(updater: (followUps: FollowUp[]) => FollowUp[]) {
+    setApplication((prev) =>
+      prev ? { ...prev, followUps: updater(prev.followUps ?? []) } : prev
+    );
+  }
+
   async function handleAddFollowUp(followUpDate: string, note: string) {
     const res = await apiFetch(`/api/applications/${id}/follow-ups`, {
       method: "POST",
       body: JSON.stringify({ followUpDate, note: note || null }),
     });
     if (!res.ok) throw new Error("Failed to add follow-up.");
-    await load();
+    const { followUp } = (await res.json()) as { followUp: FollowUp };
+    setFollowUps((followUps) =>
+      [...followUps, followUp].sort((a, b) => a.followUpDate.localeCompare(b.followUpDate))
+    );
   }
 
   async function handleToggleFollowUp(followUp: FollowUp) {
@@ -117,12 +126,15 @@ export default function ApplicationDetailPage() {
       method: "PATCH",
       body: JSON.stringify({ completed: !followUp.completed }),
     });
-    if (res.ok) await load();
+    if (!res.ok) return;
+    const { followUp: updated } = (await res.json()) as { followUp: FollowUp };
+    setFollowUps((followUps) => followUps.map((f) => (f.id === updated.id ? updated : f)));
   }
 
   async function handleDeleteFollowUp(followUpId: string) {
     const res = await apiFetch(`/api/follow-ups/${followUpId}`, { method: "DELETE" });
-    if (res.ok) await load();
+    if (!res.ok) return;
+    setFollowUps((followUps) => followUps.filter((f) => f.id !== followUpId));
   }
 
   if (notFound) {

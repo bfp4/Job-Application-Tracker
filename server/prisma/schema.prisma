@@ -23,7 +23,6 @@ model BaseResume {
   user           User             @relation(fields: [userId], references: [id])
   pdfS3Key       String
   markdownS3Key  String
-  parsed         Json
   createdAt      DateTime         @default(now())
   resumeAnalyses ResumeAnalysis[]
 
@@ -106,7 +105,7 @@ model ResumeAnalysis {
 model FollowUp {
   id            String      @id @default(cuid())
   applicationId String
-  application   Application @relation(fields: [applicationId], references: [id])
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   followUpDate  DateTime
   note          String?
   completed     Boolean     @default(false)

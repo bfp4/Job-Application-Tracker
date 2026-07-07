@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import type { Company, JobPosting } from "@prisma/client";
+import { makeBaseResume, makePosting } from "../test-helpers/fixtures";
 
 const { prismaMock, getObjectTextMock, generateResumeTipsMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -34,32 +34,8 @@ const app = express();
 app.use(express.json());
 app.use("/api/applications", applicationsRouter);
 
-type PostingWithCompany = JobPosting & { company: Company | null };
-
-const posting: PostingWithCompany = {
-  id: "posting-1",
-  userId: "user-1",
-  companyId: "company-1",
-  company: { id: "company-1", name: "Acme", website: null },
-  title: "Software Engineer",
-  location: ["Remote"],
-  salary: null,
-  jobUrl: "https://example.com/jobs/1",
-  description: "Build things.",
-  matchScore: null,
-  matchReasons: [],
-  postedDate: null,
-  fetchedAt: new Date("2026-07-01T00:00:00Z"),
-};
-
-const baseResume = {
-  id: "resume-1",
-  userId: "user-1",
-  pdfS3Key: "resumes/user-1/base.pdf",
-  markdownS3Key: "resumes/user-1/base.md",
-  parsed: {},
-  createdAt: new Date("2026-07-01T00:00:00Z"),
-};
+const posting = makePosting({ location: ["Remote"], salary: null, description: "Build things." });
+const baseResume = makeBaseResume();
 
 const tipsContent = {
   summary: "Solid fit.",

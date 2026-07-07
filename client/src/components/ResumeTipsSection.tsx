@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { apiJson } from "@/lib/api";
+import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { ResumeAnalysis, ResumeTipsContent } from "@/lib/types";
 
@@ -47,11 +47,29 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
     setGenerating(true);
     setError(null);
     try {
-      const res = await apiJson<TipsResponse>(
-        `/api/applications/${applicationId}/resume-tips`,
-        { method: "POST" }
-      );
-      setData(res);
+      const res = await apiFetch(`/api/applications/${applicationId}/resume-tips`, {
+        method: "POST",
+      });
+      const body = (await res.json().catch(() => ({}))) as Partial<TipsResponse> & {
+        error?: string;
+      };
+
+      // 409 means this tab's view was stale (already regenerated elsewhere,
+      // or a generation is in flight) — sync to the server's state instead
+      // of surfacing an error.
+      if (res.status === 409) {
+        await load();
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(body.error ?? `Request failed with status ${res.status}`);
+      }
+
+      setData({
+        analysis: body.analysis ?? null,
+        upToDate: body.upToDate ?? true,
+        hasResume: body.hasResume ?? true,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate resume tips.");
     } finally {

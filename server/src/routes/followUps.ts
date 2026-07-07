@@ -2,55 +2,53 @@ import { Router, type Request, type Response } from "express";
 import { Prisma } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { asyncHandler } from "../lib/http";
+import { parseNullableDate } from "../lib/validation";
 
 const router = Router();
-
-function parseDate(value: unknown): Date | undefined {
-  if (typeof value !== "string" || value.trim() === "") return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
 
 /**
  * PATCH /api/follow-ups/:id
  * Toggle completed and/or edit the note/date. Ownership is enforced through
  * the parent application's userId.
  */
-router.patch("/:id", authenticate, async (req: Request, res: Response) => {
-  const { completed, note, followUpDate } = req.body ?? {};
-  const data: Prisma.FollowUpUpdateInput = {};
+router.patch(
+  "/:id",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { completed, note, followUpDate } = req.body ?? {};
+    const data: Prisma.FollowUpUpdateInput = {};
 
-  if (completed !== undefined) {
-    if (typeof completed !== "boolean") {
-      res.status(400).json({ error: "`completed` must be a boolean." });
+    if (completed !== undefined) {
+      if (typeof completed !== "boolean") {
+        res.status(400).json({ error: "`completed` must be a boolean." });
+        return;
+      }
+      data.completed = completed;
+    }
+
+    if (note !== undefined) {
+      if (note !== null && typeof note !== "string") {
+        res.status(400).json({ error: "`note` must be a string or null." });
+        return;
+      }
+      data.note = note;
+    }
+
+    if (followUpDate !== undefined) {
+      const parsed = parseNullableDate(followUpDate);
+      if (parsed === undefined || parsed === null) {
+        res.status(400).json({ error: "`followUpDate` must be a valid date." });
+        return;
+      }
+      data.followUpDate = parsed;
+    }
+
+    if (Object.keys(data).length === 0) {
+      res.status(400).json({ error: "No valid fields provided to update." });
       return;
     }
-    data.completed = completed;
-  }
 
-  if (note !== undefined) {
-    if (note !== null && typeof note !== "string") {
-      res.status(400).json({ error: "`note` must be a string or null." });
-      return;
-    }
-    data.note = note;
-  }
-
-  if (followUpDate !== undefined) {
-    const parsed = parseDate(followUpDate);
-    if (!parsed) {
-      res.status(400).json({ error: "`followUpDate` must be a valid date." });
-      return;
-    }
-    data.followUpDate = parsed;
-  }
-
-  if (Object.keys(data).length === 0) {
-    res.status(400).json({ error: "No valid fields provided to update." });
-    return;
-  }
-
-  try {
     const followUp = await prisma.followUp.findFirst({
       where: { id: req.params.id, application: { userId: req.user!.id } },
     });
@@ -66,17 +64,16 @@ router.patch("/:id", authenticate, async (req: Request, res: Response) => {
     });
 
     res.json({ followUp: updated });
-  } catch (err) {
-    console.error("Failed to update follow-up:", err);
-    res.status(500).json({ error: "Failed to update follow-up." });
-  }
-});
+  })
+);
 
 /**
  * DELETE /api/follow-ups/:id
  */
-router.delete("/:id", authenticate, async (req: Request, res: Response) => {
-  try {
+router.delete(
+  "/:id",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
     const followUp = await prisma.followUp.findFirst({
       where: { id: req.params.id, application: { userId: req.user!.id } },
     });
@@ -88,10 +85,7 @@ router.delete("/:id", authenticate, async (req: Request, res: Response) => {
 
     await prisma.followUp.delete({ where: { id: followUp.id } });
     res.status(204).end();
-  } catch (err) {
-    console.error("Failed to delete follow-up:", err);
-    res.status(500).json({ error: "Failed to delete follow-up." });
-  }
-});
+  })
+);
 
 export default router;

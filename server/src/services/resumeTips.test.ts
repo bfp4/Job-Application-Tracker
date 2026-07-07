@@ -1,27 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Company, JobPosting } from "@prisma/client";
+import { makePosting } from "../test-helpers/fixtures";
 import { jobPostingFingerprint } from "./resumeTips";
-
-type PostingWithCompany = JobPosting & { company: Company | null };
-
-function makePosting(overrides: Partial<PostingWithCompany> = {}): PostingWithCompany {
-  return {
-    id: "posting-1",
-    userId: "user-1",
-    companyId: "company-1",
-    company: { id: "company-1", name: "Acme", website: null },
-    title: "Software Engineer",
-    location: ["New York, NY", "Remote"],
-    salary: "$120k–$150k",
-    jobUrl: "https://example.com/jobs/1",
-    description: "Build things with TypeScript.",
-    matchScore: null,
-    matchReasons: [],
-    postedDate: null,
-    fetchedAt: new Date("2026-07-01T00:00:00Z"),
-    ...overrides,
-  };
-}
 
 describe("jobPostingFingerprint", () => {
   it("is stable for identical content", () => {

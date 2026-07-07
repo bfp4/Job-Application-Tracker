@@ -2,7 +2,12 @@ import { createHash } from "crypto";
 import type { Company, JobPosting } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
 
-/** Structured tips the agent produces for one (resume, job posting) pair. */
+/**
+ * Structured tips the agent produces for one (resume, job posting) pair.
+ * KEEP IN SYNC with (1) RESUME_TIPS_SCHEMA below and (2) ResumeTipsContent in
+ * client/src/lib/types.ts — the content is stored as opaque JSON, so drift
+ * between the three silently renders empty sections on the client.
+ */
 export interface ResumeTipsContent {
   summary: string;
   technologiesToStudy: { name: string; reason: string }[];
@@ -16,6 +21,7 @@ export interface ResumeTipsContent {
   additionalTips: string[];
 }
 
+// KEEP IN SYNC with ResumeTipsContent above and client/src/lib/types.ts.
 const RESUME_TIPS_SCHEMA = {
   type: "object",
   properties: {
@@ -116,9 +122,21 @@ export function jobPostingFingerprint(posting: PostingWithCompany): string {
     .digest("hex");
 }
 
+// Caps on prompt segments: a resume or pasted description beyond this adds
+// token cost without adding signal. Both limits are far above normal sizes
+// (a resume is ~5-10k chars; postings a few k), so truncation only fires on
+// degenerate input.
+const MAX_RESUME_CHARS = 30_000;
+const MAX_DESCRIPTION_CHARS = 20_000;
+
+function truncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[…truncated]`;
+}
+
 /**
- * Runs the resume-coach agent: reads the full resume markdown and the full
- * posting, and returns structured, posting-specific advice.
+ * Runs the resume-coach agent: reads the resume markdown and the posting,
+ * and returns structured, posting-specific advice.
  */
 export async function generateResumeTips(
   resumeMarkdown: string,
@@ -130,14 +148,16 @@ export async function generateResumeTips(
     `Location(s): ${posting.location.length ? posting.location.join(", ") : "Not specified"}`,
     `Salary: ${posting.salary ?? "Not specified"}`,
     `URL: ${posting.jobUrl}`,
-    `Description:\n${posting.description ?? "No description provided."}`,
+    `Description:\n${truncate(posting.description ?? "No description provided.", MAX_DESCRIPTION_CHARS)}`,
   ].join("\n");
 
   return generateStructured<ResumeTipsContent>({
     system:
       "You are an expert career coach and technical recruiter. You compare a candidate's resume against a specific job posting and produce concrete, honest, actionable advice. Ground every point in the actual resume and posting text — never invent experience the candidate doesn't have, and prefer specific wording over generic advice. When the posting's description is thin, reason from the title, company, and industry norms for that role, and say when you're doing so.",
-    prompt: `Analyze how well this resume fits this job posting and produce tailored advice.\n\n<job_posting>\n${postingDetails}\n</job_posting>\n\n<resume>\n${resumeMarkdown}\n</resume>`,
+    prompt: `Analyze how well this resume fits this job posting and produce tailored advice.\n\n<job_posting>\n${postingDetails}\n</job_posting>\n\n<resume>\n${truncate(resumeMarkdown, MAX_RESUME_CHARS)}\n</resume>`,
     schema: RESUME_TIPS_SCHEMA,
-    maxTokens: 8192,
+    // Adaptive thinking (on by default for this model) shares this budget
+    // with the JSON output, so leave generous headroom to avoid truncation.
+    maxTokens: 16000,
   });
 }

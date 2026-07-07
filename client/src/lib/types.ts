@@ -56,7 +56,12 @@ export interface BaseResume {
   createdAt: string;
 }
 
-/** The structured advice produced by the resume-tips agent. */
+/**
+ * The structured advice produced by the resume-tips agent.
+ * KEEP IN SYNC with the ResumeTipsContent interface and RESUME_TIPS_SCHEMA in
+ * server/src/services/resumeTips.ts — the content arrives as opaque stored
+ * JSON, so drift silently renders empty sections here.
+ */
 export interface ResumeTipsContent {
   summary: string;
   technologiesToStudy: { name: string; reason: string }[];

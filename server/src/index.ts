@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import cors from "cors";
+import { errorHandler } from "./lib/http";
 import resumesRouter from "./routes/resumes";
 import applicationsRouter from "./routes/applications";
 import followUpsRouter from "./routes/followUps";
@@ -26,6 +27,9 @@ app.use("/api/resumes", resumesRouter);
 app.use("/api/applications", applicationsRouter);
 app.use("/api/follow-ups", followUpsRouter);
 app.use("/api/jobs", jobsRouter);
+
+// Central error middleware — asyncHandler routes rejected promises here.
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

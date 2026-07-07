@@ -2,6 +2,9 @@ import { Router, type Request, type Response } from "express";
 import { ApplicationStatus, Prisma } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { asyncHandler } from "../lib/http";
+import { getLatestBaseResume } from "../lib/baseResume";
+import { parseNullableDate } from "../lib/validation";
 import { getObjectText } from "../lib/s3";
 import {
   generateResumeTips,
@@ -19,17 +22,6 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
   );
 }
 
-/**
- * Parses a value into a Date or null. Returns `undefined` when the value is
- * present but not a valid date, so callers can reject invalid input.
- */
-function parseNullableDate(value: unknown): Date | null | undefined {
-  if (value === null) return null;
-  if (typeof value !== "string" || value.trim() === "") return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
 const applicationInclude = {
   jobPosting: { include: { company: true } },
   followUps: { orderBy: { followUpDate: "asc" as const } },
@@ -39,25 +31,26 @@ const applicationInclude = {
  * GET /api/applications
  * List all applications for the current user, newest first.
  */
-router.get("/", authenticate, async (req: Request, res: Response) => {
-  try {
+router.get(
+  "/",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
     const applications = await prisma.application.findMany({
       where: { userId: req.user!.id },
       include: applicationInclude,
       orderBy: { createdAt: "desc" },
     });
     res.json({ applications });
-  } catch (err) {
-    console.error("Failed to list applications:", err);
-    res.status(500).json({ error: "Failed to list applications." });
-  }
-});
+  })
+);
 
 /**
  * GET /api/applications/:id
  */
-router.get("/:id", authenticate, async (req: Request, res: Response) => {
-  try {
+router.get(
+  "/:id",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
     const application = await prisma.application.findFirst({
       where: { id: req.params.id, userId: req.user!.id },
       include: applicationInclude,
@@ -69,47 +62,47 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
     }
 
     res.json({ application });
-  } catch (err) {
-    console.error("Failed to fetch application:", err);
-    res.status(500).json({ error: "Failed to fetch application." });
-  }
-});
+  })
+);
 
 /**
  * POST /api/applications
  * Track a discovered job posting. If already tracked, returns the existing
  * application instead of creating a duplicate.
  */
-router.post("/", authenticate, async (req: Request, res: Response) => {
-  const { jobPostingId, status } = req.body ?? {};
+router.post(
+  "/",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { jobPostingId, status } = req.body ?? {};
 
-  if (typeof jobPostingId !== "string" || jobPostingId.trim() === "") {
-    res.status(400).json({ error: "`jobPostingId` is required." });
-    return;
-  }
+    if (typeof jobPostingId !== "string" || jobPostingId.trim() === "") {
+      res.status(400).json({ error: "`jobPostingId` is required." });
+      return;
+    }
 
-  if (status !== undefined && !isApplicationStatus(status)) {
-    res.status(400).json({
-      error: `\`status\` must be one of: ${VALID_STATUSES.join(", ")}.`,
-    });
-    return;
-  }
+    if (status !== undefined && !isApplicationStatus(status)) {
+      res.status(400).json({
+        error: `\`status\` must be one of: ${VALID_STATUSES.join(", ")}.`,
+      });
+      return;
+    }
 
-  try {
     // Postings are per-user; treat another user's posting as nonexistent.
-    const jobPosting = await prisma.jobPosting.findFirst({
-      where: { id: jobPostingId, userId: req.user!.id },
-    });
+    const [jobPosting, existing] = await Promise.all([
+      prisma.jobPosting.findFirst({
+        where: { id: jobPostingId, userId: req.user!.id },
+      }),
+      prisma.application.findFirst({
+        where: { userId: req.user!.id, jobPostingId },
+        include: applicationInclude,
+      }),
+    ]);
 
     if (!jobPosting) {
       res.status(404).json({ error: "Job posting not found." });
       return;
     }
-
-    const existing = await prisma.application.findFirst({
-      where: { userId: req.user!.id, jobPostingId },
-      include: applicationInclude,
-    });
 
     if (existing) {
       res.status(200).json({ application: existing, alreadyTracked: true });
@@ -126,53 +119,52 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
     });
 
     res.status(201).json({ application });
-  } catch (err) {
-    console.error("Failed to create application:", err);
-    res.status(500).json({ error: "Failed to create application." });
-  }
-});
+  })
+);
 
 /**
  * PATCH /api/applications/:id
  * Update status, notes and/or appliedDate.
  */
-router.patch("/:id", authenticate, async (req: Request, res: Response) => {
-  const { status, notes, appliedDate } = req.body ?? {};
-  const data: Prisma.ApplicationUpdateInput = {};
+router.patch(
+  "/:id",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { status, notes, appliedDate } = req.body ?? {};
+    const data: Prisma.ApplicationUpdateInput = {};
 
-  if (status !== undefined) {
-    if (!isApplicationStatus(status)) {
-      res.status(400).json({
-        error: `\`status\` must be one of: ${VALID_STATUSES.join(", ")}.`,
-      });
+    if (status !== undefined) {
+      if (!isApplicationStatus(status)) {
+        res.status(400).json({
+          error: `\`status\` must be one of: ${VALID_STATUSES.join(", ")}.`,
+        });
+        return;
+      }
+      data.status = status;
+    }
+
+    if (notes !== undefined) {
+      if (notes !== null && typeof notes !== "string") {
+        res.status(400).json({ error: "`notes` must be a string or null." });
+        return;
+      }
+      data.notes = notes;
+    }
+
+    if (appliedDate !== undefined) {
+      const parsed = parseNullableDate(appliedDate);
+      if (parsed === undefined) {
+        res.status(400).json({ error: "`appliedDate` must be a valid date or null." });
+        return;
+      }
+      data.appliedDate = parsed;
+    }
+
+    if (Object.keys(data).length === 0) {
+      res.status(400).json({ error: "No valid fields provided to update." });
       return;
     }
-    data.status = status;
-  }
 
-  if (notes !== undefined) {
-    if (notes !== null && typeof notes !== "string") {
-      res.status(400).json({ error: "`notes` must be a string or null." });
-      return;
-    }
-    data.notes = notes;
-  }
-
-  if (appliedDate !== undefined) {
-    const parsed = parseNullableDate(appliedDate);
-    if (parsed === undefined) {
-      res.status(400).json({ error: "`appliedDate` must be a valid date or null." });
-      return;
-    }
-    data.appliedDate = parsed;
-  }
-
-  if (Object.keys(data).length === 0) {
-    res.status(400).json({ error: "No valid fields provided to update." });
-    return;
-  }
-
-  try {
     const existing = await prisma.application.findFirst({
       where: { id: req.params.id, userId: req.user!.id },
     });
@@ -189,17 +181,17 @@ router.patch("/:id", authenticate, async (req: Request, res: Response) => {
     });
 
     res.json({ application });
-  } catch (err) {
-    console.error("Failed to update application:", err);
-    res.status(500).json({ error: "Failed to update application." });
-  }
-});
+  })
+);
 
 /**
  * DELETE /api/applications/:id
+ * Follow-ups and any saved resume analysis are removed by ON DELETE CASCADE.
  */
-router.delete("/:id", authenticate, async (req: Request, res: Response) => {
-  try {
+router.delete(
+  "/:id",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
     const existing = await prisma.application.findFirst({
       where: { id: req.params.id, userId: req.user!.id },
     });
@@ -211,11 +203,8 @@ router.delete("/:id", authenticate, async (req: Request, res: Response) => {
 
     await prisma.application.delete({ where: { id: existing.id } });
     res.status(204).end();
-  } catch (err) {
-    console.error("Failed to delete application:", err);
-    res.status(500).json({ error: "Failed to delete application." });
-  }
-});
+  })
+);
 
 /**
  * Loads everything the resume-tips endpoints need: the application (with
@@ -223,20 +212,18 @@ router.delete("/:id", authenticate, async (req: Request, res: Response) => {
  * and whether the saved analysis is still current for that resume + posting.
  */
 async function loadResumeTipsContext(userId: string, applicationId: string) {
-  const application = await prisma.application.findFirst({
-    where: { id: applicationId, userId },
-    include: {
-      jobPosting: { include: { company: true } },
-      resumeAnalysis: true,
-    },
-  });
+  const [application, baseResume] = await Promise.all([
+    prisma.application.findFirst({
+      where: { id: applicationId, userId },
+      include: {
+        jobPosting: { include: { company: true } },
+        resumeAnalysis: true,
+      },
+    }),
+    getLatestBaseResume(userId),
+  ]);
 
   if (!application) return null;
-
-  const baseResume = await prisma.baseResume.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
 
   const currentHash = jobPostingFingerprint(application.jobPosting);
   const analysis = application.resumeAnalysis;
@@ -250,13 +237,20 @@ async function loadResumeTipsContext(userId: string, applicationId: string) {
   return { application, analysis, baseResume, currentHash, upToDate };
 }
 
+// Applications with a resume-tips generation currently running. Guards the
+// check-then-act window between the staleness read and the upsert, so
+// concurrent clicks (second tab, refresh) can't double-bill the LLM call.
+const generationsInFlight = new Set<string>();
+
 /**
  * GET /api/applications/:id/resume-tips
  * Returns the saved analysis (if any) plus whether it's still current —
  * the client uses `upToDate` to disable the regenerate button.
  */
-router.get("/:id/resume-tips", authenticate, async (req: Request, res: Response) => {
-  try {
+router.get(
+  "/:id/resume-tips",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
     const ctx = await loadResumeTipsContext(req.user!.id, req.params.id);
     if (!ctx) {
       res.status(404).json({ error: "Application not found." });
@@ -268,20 +262,19 @@ router.get("/:id/resume-tips", authenticate, async (req: Request, res: Response)
       upToDate: ctx.upToDate,
       hasResume: Boolean(ctx.baseResume),
     });
-  } catch (err) {
-    console.error("Failed to fetch resume tips:", err);
-    res.status(500).json({ error: "Failed to fetch resume tips." });
-  }
-});
+  })
+);
 
 /**
  * POST /api/applications/:id/resume-tips
  * Generates (or regenerates) the analysis. Refused with 409 while the saved
  * analysis is still current — a re-run is only allowed once the resume or
- * the posting's content has changed.
+ * the posting's content has changed — or while a generation is in flight.
  */
-router.post("/:id/resume-tips", authenticate, async (req: Request, res: Response) => {
-  try {
+router.post(
+  "/:id/resume-tips",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
     const ctx = await loadResumeTipsContext(req.user!.id, req.params.id);
     if (!ctx) {
       res.status(404).json({ error: "Application not found." });
@@ -305,52 +298,65 @@ router.post("/:id/resume-tips", authenticate, async (req: Request, res: Response
       return;
     }
 
-    const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
-    const content = await generateResumeTips(
-      resumeMarkdown,
-      ctx.application.jobPosting
-    );
+    if (generationsInFlight.has(ctx.application.id)) {
+      res.status(409).json({
+        error: "An analysis is already being generated for this application.",
+        analysis: ctx.analysis ?? null,
+        upToDate: false,
+      });
+      return;
+    }
 
-    const analysis = await prisma.resumeAnalysis.upsert({
-      where: { applicationId: ctx.application.id },
-      update: {
-        baseResumeId: ctx.baseResume.id,
-        jobPostingHash: ctx.currentHash,
-        content: content as unknown as Prisma.InputJsonValue,
-      },
-      create: {
-        applicationId: ctx.application.id,
-        baseResumeId: ctx.baseResume.id,
-        jobPostingHash: ctx.currentHash,
-        content: content as unknown as Prisma.InputJsonValue,
-      },
-    });
+    generationsInFlight.add(ctx.application.id);
+    try {
+      const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
+      const content = await generateResumeTips(
+        resumeMarkdown,
+        ctx.application.jobPosting
+      );
 
-    res.status(201).json({ analysis, upToDate: true, hasResume: true });
-  } catch (err) {
-    console.error("Failed to generate resume tips:", err);
-    res.status(500).json({ error: "Failed to generate resume tips." });
-  }
-});
+      const analysis = await prisma.resumeAnalysis.upsert({
+        where: { applicationId: ctx.application.id },
+        update: {
+          baseResumeId: ctx.baseResume.id,
+          jobPostingHash: ctx.currentHash,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+        create: {
+          applicationId: ctx.application.id,
+          baseResumeId: ctx.baseResume.id,
+          jobPostingHash: ctx.currentHash,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      res.status(201).json({ analysis, upToDate: true, hasResume: true });
+    } finally {
+      generationsInFlight.delete(ctx.application.id);
+    }
+  })
+);
 
 /**
  * POST /api/applications/:id/follow-ups
  */
-router.post("/:id/follow-ups", authenticate, async (req: Request, res: Response) => {
-  const { followUpDate, note } = req.body ?? {};
+router.post(
+  "/:id/follow-ups",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { followUpDate, note } = req.body ?? {};
 
-  const parsedDate = parseNullableDate(followUpDate);
-  if (parsedDate === undefined || parsedDate === null) {
-    res.status(400).json({ error: "`followUpDate` is required and must be a valid date." });
-    return;
-  }
+    const parsedDate = parseNullableDate(followUpDate);
+    if (parsedDate === undefined || parsedDate === null) {
+      res.status(400).json({ error: "`followUpDate` is required and must be a valid date." });
+      return;
+    }
 
-  if (note !== undefined && note !== null && typeof note !== "string") {
-    res.status(400).json({ error: "`note` must be a string or null." });
-    return;
-  }
+    if (note !== undefined && note !== null && typeof note !== "string") {
+      res.status(400).json({ error: "`note` must be a string or null." });
+      return;
+    }
 
-  try {
     const application = await prisma.application.findFirst({
       where: { id: req.params.id, userId: req.user!.id },
     });
@@ -369,10 +375,7 @@ router.post("/:id/follow-ups", authenticate, async (req: Request, res: Response)
     });
 
     res.status(201).json({ followUp });
-  } catch (err) {
-    console.error("Failed to create follow-up:", err);
-    res.status(500).json({ error: "Failed to create follow-up." });
-  }
-});
+  })
+);
 
 export default router;

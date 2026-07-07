@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { inputClassName } from "@/lib/ui";
 
 interface CompanySuggestion {
   name: string;
@@ -102,7 +103,7 @@ export default function CompanyInput({ value, onChange, disabled, required, id }
         onKeyDown={handleKeyDown}
         disabled={disabled}
         autoComplete="off"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+        className={`w-full ${inputClassName}`}
       />
       {isOpen && suggestions.length > 0 && (
         <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 bg-white text-sm shadow-lg">

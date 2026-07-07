@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { hasGoogleMapsApiKey, loadGoogleMapsPlaces } from "@/lib/googleMaps";
+import { inputClassName } from "@/lib/ui";
 
 interface LocationInputProps {
   value: string[];
@@ -20,6 +21,9 @@ interface LocationInputProps {
  * places, so it can't accept those.
  */
 export default function LocationInput({ value, onChange, disabled, id }: LocationInputProps) {
+  // Build-time constant (NEXT_PUBLIC_ env) — derive once instead of
+  // re-calling the helper at every render site.
+  const placesEnabled = hasGoogleMapsApiKey();
   const containerRef = useRef<HTMLDivElement>(null);
   const autocompleteElRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
   const [customDraft, setCustomDraft] = useState("");
@@ -32,7 +36,7 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
   addLocationRef.current = addLocation;
 
   useEffect(() => {
-    if (!hasGoogleMapsApiKey()) return;
+    if (!placesEnabled) return;
     let cancelled = false;
     loadGoogleMapsPlaces()
       .then(() => {
@@ -116,7 +120,7 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
         </ul>
       )}
 
-      {hasGoogleMapsApiKey() && <div ref={containerRef} id={id} className="[&>*]:w-full" />}
+      {placesEnabled && <div ref={containerRef} id={id} className="[&>*]:w-full" />}
 
       <input
         type="text"
@@ -124,11 +128,11 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
         onChange={(e) => setCustomDraft(e.target.value)}
         onKeyDown={handleCustomKeyDown}
         disabled={disabled}
-        id={hasGoogleMapsApiKey() ? undefined : id}
+        id={placesEnabled ? undefined : id}
         placeholder={
-          hasGoogleMapsApiKey() ? "Not a real place? Type it here (e.g. Remote)…" : "e.g. New York, NY or Remote"
+          placesEnabled ? "Not a real place? Type it here (e.g. Remote)…" : "e.g. New York, NY or Remote"
         }
-        className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+        className={`mt-2 w-full ${inputClassName}`}
       />
       <p className="mt-1 text-xs text-gray-400">
         Press Enter to add. You can add more than one location.

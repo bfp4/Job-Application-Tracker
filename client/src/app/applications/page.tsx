@@ -10,6 +10,7 @@ import CompanyInput from "@/components/CompanyInput";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
+import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
 import type { Application, ApplicationStatus, JobPosting } from "@/lib/types";
 
@@ -73,12 +74,7 @@ export default function ApplicationsPage() {
         method: "POST",
         body: JSON.stringify({ jobPostingId: jobPosting.id }),
       });
-      setJobUrl("");
-      setTitle("");
-      setCompanyName("");
-      setLocations([]);
-      setSalary("");
-      setDescription("");
+      // No form reset needed — navigating away unmounts this page.
       router.push(`/applications/${application.id}`);
     } catch (err) {
       setAddJobError(err instanceof Error ? err.message : "Failed to add job.");
@@ -141,7 +137,7 @@ export default function ApplicationsPage() {
                 onChange={(e) => setJobUrl(e.target.value)}
                 placeholder="https://…"
                 disabled={addingJob}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+                className={`mt-1 w-full ${inputClassName}`}
               />
             </div>
             <div>
@@ -155,7 +151,7 @@ export default function ApplicationsPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 disabled={addingJob}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+                className={`mt-1 w-full ${inputClassName}`}
               />
             </div>
             <div>
@@ -196,7 +192,7 @@ export default function ApplicationsPage() {
                 onChange={(e) => setSalary(e.target.value)}
                 disabled={addingJob}
                 placeholder="e.g. $120k–$150k, or DOE"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+                className={`mt-1 w-full ${inputClassName}`}
               />
             </div>
             <div className="sm:col-span-2">
@@ -209,7 +205,7 @@ export default function ApplicationsPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={addingJob}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+                className={`mt-1 w-full ${inputClassName}`}
               />
             </div>
           </div>
