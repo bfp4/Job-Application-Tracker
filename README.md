@@ -1,11 +1,8 @@
 # Job Application Tracker
 
-[![CI](https://github.com/bfp4/Job-Application-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/bfp4/Job-Application-Tracker/actions/workflows/ci.yml)
-
 A full-stack job application tracker with an AI career-coach built in. Save the jobs you're applying to, track each application through its pipeline (applied → phone screen → interview → offer), schedule follow-ups, and get **Claude-generated resume tips tailored to each specific posting** — what to study, what's missing from your resume, and which bullet points to rewrite.
 
-<!-- TODO: replace with a real screenshot / demo GIF -->
-<!-- ![Screenshot](docs/screenshot.png) -->
+Try out the project: https://jobstrackeragent.vercel.app/
 
 ## Features
 
@@ -42,7 +39,6 @@ A few decisions worth calling out:
 
 - **Per-user job postings.** Postings are scoped to the user who entered them (`@@unique([userId, jobUrl])`), so no user can rewrite what another user sees for the same URL. The migration that introduced this preserves existing data: each posting is assigned to its earliest applicant, and any other user tracking the same posting gets their own copy with their application repointed to it ([migration](server/prisma/migrations/20260706040254_job_posting_per_user/migration.sql)).
 - **Staleness-gated AI runs.** Each saved analysis records the resume version it used and a SHA-256 fingerprint of the posting's content fields. While both are unchanged, the server refuses to regenerate (HTTP 409) and the UI disables the button — no way to burn tokens re-running an identical analysis. Uploading a new resume or editing the posting re-enables it.
-- **Structured outputs, not prompt-and-parse.** The agent call constrains Claude's response to a JSON schema (`output_config.format`), so the tips render from typed data rather than parsed prose.
 - **PDF → Markdown at upload time.** Resumes are converted once when uploaded and both artifacts stored in S3; the agent reads the Markdown, keeping analysis requests fast and cheap.
 - **Defense on the write path.** URL validation rejects non-http(s) schemes (stored-XSS vector, since posting URLs render as links), uploads are capped at 10 MB in memory, and every route checks row ownership against the authenticated user.
 
@@ -76,10 +72,3 @@ npx tsc --noEmit  # typecheck
 ```
 
 CI runs typecheck + tests for the server and typecheck for the client on every push and pull request ([workflow](.github/workflows/ci.yml)).
-
-## Roadmap
-
-- Deploy client + server (currently the database runs on RDS; the app runs locally)
-- Rate limiting / cost caps on the AI endpoint
-- Analysis history (keep prior analyses when regenerating)
-- Browser extension or URL-scraping to prefill job details
