@@ -14,23 +14,6 @@ Try out the project: https://jobstrackeragent.vercel.app/
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph Client["Next.js client (React 19, Tailwind)"]
-        UI[Pages: dashboard / applications / settings]
-    end
-    subgraph Server["Express API (TypeScript)"]
-        Auth[Firebase token verification]
-        Routes[REST routes]
-        Agent[Resume-tips agent]
-    end
-    UI -- "fetch + Firebase ID token" --> Auth --> Routes
-    Routes --> DB[(PostgreSQL on RDS via Prisma)]
-    Routes --> S3[(S3: resume PDF + Markdown)]
-    Agent -- "structured outputs (JSON schema)" --> Claude[Anthropic API]
-    Routes --> Agent
-```
-
 **Stack:** Next.js 15 / React 19 / Tailwind · Express + TypeScript · Prisma + PostgreSQL (AWS RDS) · Firebase Auth · AWS S3 · Anthropic Claude (structured outputs) · Vitest + Supertest · GitHub Actions
 
 ## Design notes
