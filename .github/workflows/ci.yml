@@ -71,7 +71,7 @@ jobs:
     name: Deploy API to EC2
     needs: [server, client, lambda]
     # Deploys only from main, and only once the infra exists (repo variables set).
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.INSTANCE_ID != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.INSTANCE_ID != '' && vars.DEPLOY_ROLE_ARN != ''
     # arm runner: the image must be arm64 to run on the t4g instance.
     runs-on: ubuntu-24.04-arm
     steps:

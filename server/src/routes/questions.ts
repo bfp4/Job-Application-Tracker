@@ -4,7 +4,9 @@ import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
+import { createInFlightGuard } from "../lib/inFlight";
 import { getObjectText } from "../lib/s3";
+import { isNonEmptyString, isNullableString } from "../lib/validation";
 import { generateQuestionAnswer } from "../services/applicationQuestions";
 
 const router = Router();
@@ -22,7 +24,7 @@ router.patch(
     const data: Prisma.ApplicationQuestionUpdateInput = {};
 
     if (question !== undefined) {
-      if (typeof question !== "string" || question.trim() === "") {
+      if (!isNonEmptyString(question)) {
         res.status(400).json({ error: "`question` must be a non-empty string." });
         return;
       }
@@ -30,11 +32,13 @@ router.patch(
     }
 
     if (answer !== undefined) {
-      if (answer !== null && typeof answer !== "string") {
+      if (!isNullableString(answer)) {
         res.status(400).json({ error: "`answer` must be a string or null." });
         return;
       }
-      data.answer = answer;
+      // Empty answers are stored as NULL so `answer === null` reliably means
+      // "unanswered" regardless of which client sent the update.
+      data.answer = answer === null || answer.trim() === "" ? null : answer;
     }
 
     if (Object.keys(data).length === 0) {
@@ -67,23 +71,23 @@ router.delete(
   "/:id",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const existing = await prisma.applicationQuestion.findFirst({
+    // deleteMany so the ownership filter and the delete are one round-trip;
+    // count 0 means not found (or not this user's), either way a 404.
+    const { count } = await prisma.applicationQuestion.deleteMany({
       where: { id: req.params.id, application: { userId: req.user!.id } },
     });
 
-    if (!existing) {
+    if (count === 0) {
       res.status(404).json({ error: "Question not found." });
       return;
     }
 
-    await prisma.applicationQuestion.delete({ where: { id: existing.id } });
     res.status(204).end();
   })
 );
 
-// Questions with an AI draft currently generating. Guards against concurrent
-// clicks (second tab, double-click) double-billing the LLM call.
-const draftsInFlight = new Set<string>();
+// Questions with an AI draft currently generating (see lib/inFlight.ts).
+const draftsInFlight = createInFlightGuard();
 
 /**
  * POST /api/questions/:id/answer
@@ -107,7 +111,7 @@ router.post(
       return;
     }
 
-    if (draft !== undefined && draft !== null && typeof draft !== "string") {
+    if (!isNullableString(draft)) {
       res.status(400).json({ error: "`draft` must be a string or null." });
       return;
     }
@@ -148,14 +152,13 @@ router.post(
       return;
     }
 
-    if (draftsInFlight.has(question.id)) {
+    if (!draftsInFlight.tryAcquire(question.id)) {
       res.status(409).json({
         error: "An answer is already being drafted for this question.",
       });
       return;
     }
 
-    draftsInFlight.add(question.id);
     try {
       const resumeMarkdown = await getObjectText(baseResume.markdownS3Key);
       const answer = await generateQuestionAnswer(
@@ -173,7 +176,7 @@ router.post(
 
       res.status(201).json({ question: updated });
     } finally {
-      draftsInFlight.delete(question.id);
+      draftsInFlight.release(question.id);
     }
   })
 );

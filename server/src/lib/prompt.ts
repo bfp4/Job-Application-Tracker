@@ -8,7 +8,7 @@ export type PostingWithCompany = JobPosting & { company: Company | null };
 // (a resume is ~5-10k chars; postings a few k), so truncation only fires on
 // degenerate input.
 export const MAX_RESUME_CHARS = 30_000;
-export const MAX_DESCRIPTION_CHARS = 20_000;
+const MAX_DESCRIPTION_CHARS = 20_000;
 
 export function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;

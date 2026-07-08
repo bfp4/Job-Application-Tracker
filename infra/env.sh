@@ -60,6 +60,17 @@ sg_id() {
     --query "SecurityGroups[0].GroupId" --output text
 }
 
+# The project's Elastic IP, found by its App tag. Prints "None" if absent.
+eip_allocation_id() {
+  aws ec2 describe-addresses --filters "Name=tag:App,Values=$APP" \
+    --query "Addresses[0].AllocationId" --output text
+}
+
+eip_public_ip() {
+  aws ec2 describe-addresses --filters "Name=tag:App,Values=$APP" \
+    --query "Addresses[0].PublicIp" --output text
+}
+
 require_duckdns_host() {
   if [ -z "$DUCKDNS_HOST" ]; then
     echo "Set DUCKDNS_HOST first, e.g.: export DUCKDNS_HOST=myjobtracker.duckdns.org" >&2

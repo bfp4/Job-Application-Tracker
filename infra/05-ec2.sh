@@ -28,6 +28,9 @@ EXISTING="$(aws ec2 describe-instances \
 if [ "$EXISTING" != "None" ] && [ -n "$EXISTING" ]; then
   INSTANCE_ID="$EXISTING"
   echo "Instance exists: $INSTANCE_ID"
+  echo "NOTE: /opt/app/deploy.env is written by user-data at launch only. If"
+  echo "DUCKDNS_HOST, ECR settings, or SSM_PATH changed, update it on the"
+  echo "instance by hand (or terminate and re-run this script)."
 else
   AMI_ID="$(aws ssm get-parameter \
     --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64 \
@@ -76,9 +79,7 @@ EOF
 fi
 
 # ---------- Elastic IP ----------
-ALLOC_ID="$(aws ec2 describe-addresses \
-  --filters "Name=tag:App,Values=$APP" \
-  --query "Addresses[0].AllocationId" --output text)"
+ALLOC_ID="$(eip_allocation_id)"
 if [ "$ALLOC_ID" = "None" ] || [ -z "$ALLOC_ID" ]; then
   ALLOC_ID="$(aws ec2 allocate-address --domain vpc \
     --tag-specifications "ResourceType=elastic-ip,Tags=[{Key=Name,Value=${APP}-eip},{Key=App,Value=${APP}}]" \

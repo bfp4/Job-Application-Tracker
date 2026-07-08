@@ -57,7 +57,8 @@ export default function QuestionsSection({
   ) {
     const res = await apiFetch(`/api/questions/${question.id}/answer`, {
       method: "POST",
-      body: JSON.stringify(mode === "refine" ? { mode, draft } : { mode }),
+      // The server only reads `draft` for refine; undefined serializes away.
+      body: JSON.stringify({ mode, draft }),
     });
     const data = (await res.json().catch(() => ({}))) as {
       question?: ApplicationQuestion;
@@ -170,6 +171,9 @@ function QuestionItem({
     }
   }
 
+  const primaryButtonClass =
+    "rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
     <li className="rounded-lg border border-gray-100 bg-gray-50 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -205,7 +209,7 @@ function QuestionItem({
             onClick={() => handleDraftClick("refine")}
             disabled={drafting}
             title="Improve the current answer with AI — keeps its ideas and voice."
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className={primaryButtonClass}
           >
             {draftingMode === "refine" ? "Refining…" : "Refine my draft"}
           </button>
@@ -218,7 +222,7 @@ function QuestionItem({
           className={
             answerDraft.trim() !== ""
               ? "rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-              : "rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              : primaryButtonClass
           }
         >
           {draftingMode === "new"

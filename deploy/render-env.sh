@@ -12,6 +12,11 @@ ENV_FILE="/opt/app/.env"
 umask 077
 tmp="$(mktemp)"
 
+# Values are written single-quoted: docker compose's env_file parser strips
+# the quotes but does NOT expand escape sequences inside them, so the
+# Firebase key's literal \n survives (double quotes would expand it, and
+# older parsers keep them entirely). Constraint carried over from the text
+# parsing here: values must be single-line and must not contain single quotes.
 aws ssm get-parameters-by-path \
   --path "$SSM_PATH" \
   --with-decryption \
@@ -19,7 +24,7 @@ aws ssm get-parameters-by-path \
   --output text |
   while IFS=$'\t' read -r name value; do
     key="${name##*/}"
-    printf '%s="%s"\n' "$key" "$value" >>"$tmp"
+    printf "%s='%s'\n" "$key" "$value" >>"$tmp"
   done
 
 if [ ! -s "$tmp" ]; then

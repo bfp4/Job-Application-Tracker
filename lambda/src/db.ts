@@ -20,6 +20,10 @@ export function createClient(): pg.Client {
   return new pg.Client({
     connectionString,
     ssl: { rejectUnauthorized: false },
+    // The queries below truncate to *days* with date_trunc('day', NOW()),
+    // which uses the session timezone — pin it so the reminder window and
+    // the per-day dedup don't shift if the RDS default ever isn't UTC.
+    options: "-c TimeZone=UTC",
   });
 }
 

@@ -86,6 +86,8 @@ model Application {
 
   @@unique([userId, jobPostingId])
   @@index([userId])
+  // The daily reminder Lambda scans for status = NOT_APPLIED across all users.
+  @@index([status])
 }
 
 // A question asked on the job application form (e.g. "What project are you
@@ -133,4 +135,7 @@ model FollowUp {
   reminderSentAt DateTime?
 
   @@index([applicationId])
+  // The daily reminder Lambda queries a 4-day followUpDate window across all
+  // users; without this it sequential-scans the whole table.
+  @@index([followUpDate])
 }

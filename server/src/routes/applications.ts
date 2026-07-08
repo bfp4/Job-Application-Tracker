@@ -4,7 +4,8 @@ import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
-import { parseNullableDate } from "../lib/validation";
+import { createInFlightGuard } from "../lib/inFlight";
+import { isNonEmptyString, parseNullableDate } from "../lib/validation";
 import { getObjectText } from "../lib/s3";
 import {
   generateResumeTips,
@@ -28,6 +29,13 @@ const applicationInclude = {
   questions: { orderBy: { createdAt: "asc" as const } },
 };
 
+// The list/dashboard views never render questions (they can carry multi-
+// paragraph AI answers), so the list endpoint skips that join and payload.
+const applicationListInclude = {
+  jobPosting: applicationInclude.jobPosting,
+  followUps: applicationInclude.followUps,
+};
+
 /**
  * GET /api/applications
  * List all applications for the current user, newest first.
@@ -38,7 +46,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const applications = await prisma.application.findMany({
       where: { userId: req.user!.id },
-      include: applicationInclude,
+      include: applicationListInclude,
       orderBy: { createdAt: "desc" },
     });
     res.json({ applications });
@@ -239,9 +247,9 @@ async function loadResumeTipsContext(userId: string, applicationId: string) {
 }
 
 // Applications with a resume-tips generation currently running. Guards the
-// check-then-act window between the staleness read and the upsert, so
-// concurrent clicks (second tab, refresh) can't double-bill the LLM call.
-const generationsInFlight = new Set<string>();
+// check-then-act window between the staleness read and the upsert
+// (see lib/inFlight.ts).
+const generationsInFlight = createInFlightGuard();
 
 /**
  * GET /api/applications/:id/resume-tips
@@ -299,7 +307,7 @@ router.post(
       return;
     }
 
-    if (generationsInFlight.has(ctx.application.id)) {
+    if (!generationsInFlight.tryAcquire(ctx.application.id)) {
       res.status(409).json({
         error: "An analysis is already being generated for this application.",
         analysis: ctx.analysis ?? null,
@@ -308,7 +316,6 @@ router.post(
       return;
     }
 
-    generationsInFlight.add(ctx.application.id);
     try {
       const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
       const content = await generateResumeTips(
@@ -333,7 +340,7 @@ router.post(
 
       res.status(201).json({ analysis, upToDate: true, hasResume: true });
     } finally {
-      generationsInFlight.delete(ctx.application.id);
+      generationsInFlight.release(ctx.application.id);
     }
   })
 );
@@ -349,7 +356,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { question } = req.body ?? {};
 
-    if (typeof question !== "string" || question.trim() === "") {
+    if (!isNonEmptyString(question)) {
       res.status(400).json({ error: "`question` is required." });
       return;
     }

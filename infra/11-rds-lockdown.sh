@@ -18,8 +18,7 @@ source "$(dirname "$0")/env.sh"
 RDS_SG_ID="$(sg_id "$SG_RDS")"
 [ "$RDS_SG_ID" != "None" ] || { echo "Run 01-security-groups.sh first." >&2; exit 1; }
 
-EIP="$(aws ec2 describe-addresses --filters "Name=tag:App,Values=$APP" \
-  --query "Addresses[0].PublicIp" --output text)"
+EIP="$(eip_public_ip)"
 
 echo "Tunnel command for future local DB access (TEST IT FIRST in another terminal):"
 echo

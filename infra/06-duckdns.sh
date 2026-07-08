@@ -9,8 +9,7 @@ require_duckdns_host
 : "${DUCKDNS_TOKEN:?Set DUCKDNS_TOKEN (from your DuckDNS account page)}"
 
 SUBDOMAIN="${DUCKDNS_HOST%%.duckdns.org}"
-EIP="$(aws ec2 describe-addresses --filters "Name=tag:App,Values=$APP" \
-  --query "Addresses[0].PublicIp" --output text)"
+EIP="$(eip_public_ip)"
 [ "$EIP" != "None" ] || { echo "No Elastic IP found — run 05-ec2.sh first." >&2; exit 1; }
 
 RESULT="$(curl -fsS "https://www.duckdns.org/update?domains=${SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip=${EIP}")"

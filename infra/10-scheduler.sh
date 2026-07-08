@@ -44,11 +44,16 @@ aws iam put-role-policy --role-name "$SCHEDULER_ROLE" \
 ROLE_ARN="$(aws iam get-role --role-name "$SCHEDULER_ROLE" --query "Role.Arn" --output text)"
 
 # ---------- schedule ----------
+# RetryPolicy: without it, Scheduler defaults to up to 185 retries over 24h.
+# The handler throws when any user's send fails, and a permanently failing
+# recipient (e.g. unverified while SES is sandboxed) would otherwise be
+# retried all day. Two retries cover transient errors; the daily run is the
+# real retry loop (unsent follow-ups stay unmarked).
 ARGS=(
   --name "$SCHEDULE_NAME"
   --schedule-expression "cron(0 14 * * ? *)"
   --flexible-time-window "Mode=OFF"
-  --target "Arn=${LAMBDA_ARN},RoleArn=${ROLE_ARN}"
+  --target "Arn=${LAMBDA_ARN},RoleArn=${ROLE_ARN},RetryPolicy={MaximumRetryAttempts=2,MaximumEventAgeInSeconds=3600}"
 )
 if aws scheduler get-schedule --name "$SCHEDULE_NAME" >/dev/null 2>&1; then
   aws scheduler update-schedule "${ARGS[@]}" >/dev/null
