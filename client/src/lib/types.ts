@@ -36,6 +36,16 @@ export interface FollowUp {
   completed: boolean;
 }
 
+/** A question from the application form, with a (possibly AI-drafted) answer. */
+export interface ApplicationQuestion {
+  id: string;
+  applicationId: string;
+  question: string;
+  answer: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Application {
   id: string;
   userId: string;
@@ -47,6 +57,7 @@ export interface Application {
   updatedAt: string;
   jobPosting?: JobPosting;
   followUps?: FollowUp[];
+  questions?: ApplicationQuestion[];
 }
 
 export interface BaseResume {

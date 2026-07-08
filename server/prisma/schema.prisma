@@ -82,9 +82,25 @@ model Application {
   updatedAt      DateTime          @updatedAt
   followUps      FollowUp[]
   resumeAnalysis ResumeAnalysis?
+  questions      ApplicationQuestion[]
 
   @@unique([userId, jobPostingId])
   @@index([userId])
+}
+
+// A question asked on the job application form (e.g. "What project are you
+// most proud of?"), with the user's answer. The answer can be AI-drafted from
+// the resume + posting and then edited by hand — the row doesn't distinguish.
+model ApplicationQuestion {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question      String
+  answer        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([applicationId])
 }
 
 // One saved resume-tips analysis per application. baseResumeId and

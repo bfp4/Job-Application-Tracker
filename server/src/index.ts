@@ -5,6 +5,7 @@ import { errorHandler } from "./lib/http";
 import resumesRouter from "./routes/resumes";
 import applicationsRouter from "./routes/applications";
 import followUpsRouter from "./routes/followUps";
+import questionsRouter from "./routes/questions";
 import jobsRouter from "./routes/jobs";
 
 const app = express();
@@ -26,6 +27,7 @@ app.get("/health", (_req: Request, res: Response) => {
 app.use("/api/resumes", resumesRouter);
 app.use("/api/applications", applicationsRouter);
 app.use("/api/follow-ups", followUpsRouter);
+app.use("/api/questions", questionsRouter);
 app.use("/api/jobs", jobsRouter);
 
 // Central error middleware — asyncHandler routes rejected promises here.

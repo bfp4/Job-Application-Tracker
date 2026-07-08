@@ -6,12 +6,18 @@ import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
+import QuestionsSection from "@/components/QuestionsSection";
 import { apiFetch } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
-import type { Application, ApplicationStatus, FollowUp } from "@/lib/types";
+import type {
+  Application,
+  ApplicationQuestion,
+  ApplicationStatus,
+  FollowUp,
+} from "@/lib/types";
 
 export default function ApplicationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -106,6 +112,15 @@ export default function ApplicationDetailPage() {
   function setFollowUps(updater: (followUps: FollowUp[]) => FollowUp[]) {
     setApplication((prev) =>
       prev ? { ...prev, followUps: updater(prev.followUps ?? []) } : prev
+    );
+  }
+
+  // Same pattern for application-form questions.
+  function setQuestions(
+    updater: (questions: ApplicationQuestion[]) => ApplicationQuestion[]
+  ) {
+    setApplication((prev) =>
+      prev ? { ...prev, questions: updater(prev.questions ?? []) } : prev
     );
   }
 
@@ -237,6 +252,12 @@ export default function ApplicationDetailPage() {
             </div>
 
             <ResumeTipsSection applicationId={id} />
+
+            <QuestionsSection
+              applicationId={id}
+              questions={application.questions ?? []}
+              setQuestions={setQuestions}
+            />
 
             <FollowUpsSection
               followUps={application.followUps ?? []}

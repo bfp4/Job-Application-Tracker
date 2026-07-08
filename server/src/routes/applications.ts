@@ -25,6 +25,7 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
 const applicationInclude = {
   jobPosting: { include: { company: true } },
   followUps: { orderBy: { followUpDate: "asc" as const } },
+  questions: { orderBy: { createdAt: "asc" as const } },
 };
 
 /**
@@ -334,6 +335,39 @@ router.post(
     } finally {
       generationsInFlight.delete(ctx.application.id);
     }
+  })
+);
+
+/**
+ * POST /api/applications/:id/questions
+ * Add a question from the application form. Answering (by hand or AI) happens
+ * through the /api/questions routes.
+ */
+router.post(
+  "/:id/questions",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { question } = req.body ?? {};
+
+    if (typeof question !== "string" || question.trim() === "") {
+      res.status(400).json({ error: "`question` is required." });
+      return;
+    }
+
+    const application = await prisma.application.findFirst({
+      where: { id: req.params.id, userId: req.user!.id },
+    });
+
+    if (!application) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    const created = await prisma.applicationQuestion.create({
+      data: { applicationId: application.id, question: question.trim() },
+    });
+
+    res.status(201).json({ question: created });
   })
 );
 
