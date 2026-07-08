@@ -10,7 +10,5 @@ await build({
   // pg-native is an optional require inside pg (never installed here);
   // the AWS SDK v3 ships in the nodejs22.x Lambda runtime.
   external: ["pg-native", "@aws-sdk/*"],
-  minify: false,
-  sourcemap: false,
   logLevel: "info",
 });

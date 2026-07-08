@@ -6,7 +6,6 @@ set -euo pipefail
 source "$(dirname "$0")/env.sh"
 require_duckdns_host
 
-VPC_ID="$(vpc_id)"
 API_SG="$(sg_id "$SG_API")"
 [ "$API_SG" != "None" ] || { echo "Run 01-security-groups.sh first." >&2; exit 1; }
 
@@ -56,6 +55,7 @@ AWS_REGION=${AWS_REGION}
 ECR_REGISTRY=${ECR_REGISTRY}
 ECR_IMAGE=${ECR_REGISTRY}/${ECR_REPO}:latest
 DUCKDNS_HOST=${DUCKDNS_HOST}
+SSM_PATH=${SSM_PATH}
 DEPLOYENV
 EOF
 

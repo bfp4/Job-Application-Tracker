@@ -1,5 +1,10 @@
-import type { Company, JobPosting } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
+import {
+  MAX_RESUME_CHARS,
+  formatPostingForPrompt,
+  truncate,
+  type PostingWithCompany,
+} from "../lib/prompt";
 
 const ANSWER_SCHEMA = {
   type: "object",
@@ -14,20 +19,11 @@ const ANSWER_SCHEMA = {
   additionalProperties: false,
 };
 
-type PostingWithCompany = JobPosting & { company: Company | null };
-
-// Caps on prompt segments — same rationale as resumeTips.ts: normal input is
-// far below these, so truncation only fires on degenerate input.
-const MAX_RESUME_CHARS = 30_000;
-const MAX_DESCRIPTION_CHARS = 20_000;
+// Caps for the segments only this prompt has; the resume/description caps
+// live in lib/prompt.ts.
 const MAX_NOTES_CHARS = 10_000;
 const MAX_QUESTION_CHARS = 5_000;
 const MAX_DRAFT_CHARS = 10_000;
-
-function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n\n[…truncated]`;
-}
 
 /**
  * Drafts an answer to one application-form question, grounded in the
@@ -44,12 +40,7 @@ export async function generateQuestionAnswer(
   applicationNotes: string | null,
   existingDraft: string | null = null
 ): Promise<string> {
-  const postingDetails = [
-    `Title: ${posting.title}`,
-    `Company: ${posting.company?.name ?? "Unknown"}`,
-    `Location(s): ${posting.location.length ? posting.location.join(", ") : "Not specified"}`,
-    `Description:\n${truncate(posting.description ?? "No description provided.", MAX_DESCRIPTION_CHARS)}`,
-  ].join("\n");
+  const postingDetails = formatPostingForPrompt(posting);
 
   const sections = [
     `<question>\n${truncate(question, MAX_QUESTION_CHARS)}\n</question>`,

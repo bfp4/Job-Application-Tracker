@@ -9,8 +9,11 @@ permissions:
   id-token: write # OIDC token for assuming the AWS deploy role
   contents: read
 
+# KEEP IN SYNC with infra/env.sh ($APP-derived names and region).
 env:
   AWS_REGION: us-east-2
+  ECR_REPO: jobtracker-api
+  LAMBDA_FUNCTION: jobtracker-reminders
 
 jobs:
   server:
@@ -80,7 +83,7 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
       - name: Build and push image
         run: |
-          IMAGE="${{ vars.ECR_REGISTRY }}/jobtracker-api"
+          IMAGE="${{ vars.ECR_REGISTRY }}/${{ env.ECR_REPO }}"
           docker build --platform linux/arm64 \
             -t "$IMAGE:${GITHUB_SHA}" -t "$IMAGE:latest" server/
           docker push "$IMAGE:${GITHUB_SHA}"
@@ -156,10 +159,10 @@ jobs:
       - name: Update function code
         working-directory: lambda
         run: |
-          if ! aws lambda get-function --function-name jobtracker-reminders >/dev/null 2>&1; then
+          if ! aws lambda get-function --function-name "$LAMBDA_FUNCTION" >/dev/null 2>&1; then
             echo "Function not provisioned yet (infra/09-lambda.sh) — skipping."
             exit 0
           fi
           aws lambda update-function-code \
-            --function-name jobtracker-reminders \
+            --function-name "$LAMBDA_FUNCTION" \
             --zip-file fileb://function.zip

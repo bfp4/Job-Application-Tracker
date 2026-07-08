@@ -11,7 +11,6 @@ set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
 SERVICE="com.amazonaws.${AWS_REGION}.email"
-VPC_ID="$(vpc_id)"
 VPCE_SG="$(sg_id "$SG_VPCE")"
 [ "$VPCE_SG" != "None" ] || { echo "Run 01-security-groups.sh first." >&2; exit 1; }
 

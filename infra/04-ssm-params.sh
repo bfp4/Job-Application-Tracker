@@ -14,10 +14,10 @@ if [ ! -f "$SRC" ]; then
 fi
 
 # Only these keys are uploaded. Note: no AWS access keys — the instance role
-# provides S3 credentials in production.
+# provides S3 credentials in production. No PORT either: 5000 is fixed infra,
+# baked into the Dockerfile, compose healthcheck, and Caddyfile.
 KEYS=(
   DATABASE_URL
-  PORT
   CORS_ORIGIN
   FIREBASE_PROJECT_ID
   FIREBASE_CLIENT_EMAIL

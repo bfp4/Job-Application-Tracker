@@ -1,6 +1,11 @@
 import pg from "pg";
 import type { DueFollowUpRow, NotAppliedRow } from "./digest.js";
 
+// The raw SQL below hand-mirrors table/column names and the NOT_APPLIED
+// status value from server/prisma/schema.prisma (this package deliberately
+// skips the Prisma client to keep the bundle small). Nothing type-checks
+// that mapping — when renaming schema fields, update these queries too.
+
 /**
  * One short-lived client per invocation (the function runs once a day, so a
  * pooled connection would be stale by the next invoke anyway). RDS defaults
@@ -14,10 +19,7 @@ export function createClient(): pg.Client {
   }
   return new pg.Client({
     connectionString,
-    ssl:
-      process.env.DATABASE_SSL === "disable"
-        ? undefined
-        : { rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: false },
   });
 }
 

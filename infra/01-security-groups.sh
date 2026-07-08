@@ -10,7 +10,6 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-VPC_ID="$(vpc_id)"
 echo "VPC: $VPC_ID"
 
 ensure_sg() {

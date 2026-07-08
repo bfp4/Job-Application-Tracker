@@ -146,7 +146,7 @@ cat >"$tmp/gh-policy.json" <<EOF
     {
       "Sid": "PollDeploy",
       "Effect": "Allow",
-      "Action": ["ssm:GetCommandInvocation", "ssm:ListCommands"],
+      "Action": "ssm:GetCommandInvocation",
       "Resource": "*"
     },
     {

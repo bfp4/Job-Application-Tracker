@@ -47,10 +47,7 @@ function getS3(): S3Config {
       : undefined;
 
   cached = {
-    client: new S3Client({
-      region: AWS_REGION,
-      ...(credentials ? { credentials } : {}),
-    }),
+    client: new S3Client({ region: AWS_REGION, credentials }),
     bucket: AWS_S3_BUCKET_NAME,
   };
 

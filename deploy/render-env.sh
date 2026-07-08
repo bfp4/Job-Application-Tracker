@@ -4,7 +4,9 @@
 # ssm:GetParametersByPath + kms:Decrypt on this path only).
 set -euo pipefail
 
-SSM_PATH="/jobtracker/prod"
+# SSM_PATH arrives via /opt/app/deploy.env (sourced by on-instance-deploy.sh),
+# the same value infra/env.sh used to scope the IAM grant and write the params.
+SSM_PATH="${SSM_PATH:-/jobtracker/prod}"
 ENV_FILE="/opt/app/.env"
 
 umask 077

@@ -118,6 +118,8 @@ model ResumeAnalysis {
   updatedAt      DateTime    @updatedAt
 }
 
+// NOTE: lambda/src/db.ts queries this model (and Application/User/JobPosting/
+// Company) with raw SQL — renames here must be mirrored there by hand.
 model FollowUp {
   id             String      @id @default(cuid())
   applicationId  String

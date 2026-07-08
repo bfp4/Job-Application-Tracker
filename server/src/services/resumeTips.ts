@@ -1,6 +1,11 @@
 import { createHash } from "crypto";
-import type { Company, JobPosting } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
+import {
+  MAX_RESUME_CHARS,
+  formatPostingForPrompt,
+  truncate,
+  type PostingWithCompany,
+} from "../lib/prompt";
 
 /**
  * Structured tips the agent produces for one (resume, job posting) pair.
@@ -100,8 +105,6 @@ const RESUME_TIPS_SCHEMA = {
   additionalProperties: false,
 };
 
-type PostingWithCompany = JobPosting & { company: Company | null };
-
 /**
  * Hash of every posting field the analysis actually reads. If none of these
  * changed, a re-run would see identical input — which is what "the job
@@ -122,18 +125,6 @@ export function jobPostingFingerprint(posting: PostingWithCompany): string {
     .digest("hex");
 }
 
-// Caps on prompt segments: a resume or pasted description beyond this adds
-// token cost without adding signal. Both limits are far above normal sizes
-// (a resume is ~5-10k chars; postings a few k), so truncation only fires on
-// degenerate input.
-const MAX_RESUME_CHARS = 30_000;
-const MAX_DESCRIPTION_CHARS = 20_000;
-
-function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n\n[…truncated]`;
-}
-
 /**
  * Runs the resume-coach agent: reads the resume markdown and the posting,
  * and returns structured, posting-specific advice.
@@ -142,14 +133,9 @@ export async function generateResumeTips(
   resumeMarkdown: string,
   posting: PostingWithCompany
 ): Promise<ResumeTipsContent> {
-  const postingDetails = [
-    `Title: ${posting.title}`,
-    `Company: ${posting.company?.name ?? "Unknown"}`,
-    `Location(s): ${posting.location.length ? posting.location.join(", ") : "Not specified"}`,
-    `Salary: ${posting.salary ?? "Not specified"}`,
-    `URL: ${posting.jobUrl}`,
-    `Description:\n${truncate(posting.description ?? "No description provided.", MAX_DESCRIPTION_CHARS)}`,
-  ].join("\n");
+  const postingDetails = formatPostingForPrompt(posting, {
+    includeSalaryAndUrl: true,
+  });
 
   return generateStructured<ResumeTipsContent>({
     system:

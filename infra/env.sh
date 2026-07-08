@@ -22,6 +22,8 @@ export S3_BUCKET="${S3_BUCKET:-job-tracker-files-ari}"
 export SES_IDENTITY="${SES_IDENTITY:-generalarileverton@gmail.com}"
 
 # Derived names — referenced by multiple scripts, change only in one place.
+# The CI workflow (.github/workflows/ci.yml env block) repeats ECR_REPO and
+# LAMBDA_FUNCTION because it cannot source this file — keep them in sync.
 export SG_API="${APP}-api"
 export SG_LAMBDA="${APP}-lambda"
 export SG_VPCE="${APP}-vpce"
@@ -41,20 +43,20 @@ export ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
 # Everything (EC2, Lambda, endpoints, SGs) must land in the VPC that already
 # hosts RDS, so derive it from the DB instance rather than assuming a default.
-vpc_id() {
-  aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" \
-    --query "DBInstances[0].DBSubnetGroup.VpcId" --output text
-}
+# Resolved once at source time — sg_id/vpc_subnet_ids are called repeatedly
+# per script and must not each re-run the RDS describe call.
+export VPC_ID="$(aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" \
+  --query "DBInstances[0].DBSubnetGroup.VpcId" --output text)"
 
 vpc_subnet_ids() {
-  aws ec2 describe-subnets --filters "Name=vpc-id,Values=$(vpc_id)" \
+  aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" \
     --query "Subnets[*].SubnetId" --output text
 }
 
 sg_id() {
   # $1 = group name; prints the id or "None"
   aws ec2 describe-security-groups \
-    --filters "Name=group-name,Values=$1" "Name=vpc-id,Values=$(vpc_id)" \
+    --filters "Name=group-name,Values=$1" "Name=vpc-id,Values=$VPC_ID" \
     --query "SecurityGroups[0].GroupId" --output text
 }
 
