@@ -28,25 +28,28 @@ function getS3(): S3Config {
     AWS_S3_BUCKET_NAME,
   } = process.env;
 
-  if (
-    !AWS_REGION ||
-    !AWS_ACCESS_KEY_ID ||
-    !AWS_SECRET_ACCESS_KEY ||
-    !AWS_S3_BUCKET_NAME
-  ) {
+  if (!AWS_REGION || !AWS_S3_BUCKET_NAME) {
     throw new Error(
-      "Missing AWS S3 configuration. Set AWS_REGION, AWS_ACCESS_KEY_ID, " +
-        "AWS_SECRET_ACCESS_KEY and AWS_S3_BUCKET_NAME in the server environment."
+      "Missing AWS S3 configuration. Set AWS_REGION and AWS_S3_BUCKET_NAME " +
+        "in the server environment."
     );
   }
+
+  // Explicit credentials are only used when both keys are present (local
+  // dev). Otherwise the SDK's default provider chain resolves them — on EC2
+  // that's the instance role via IMDS, so no static keys live on the box.
+  const credentials =
+    AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: AWS_ACCESS_KEY_ID,
+          secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined;
 
   cached = {
     client: new S3Client({
       region: AWS_REGION,
-      credentials: {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      },
+      ...(credentials ? { credentials } : {}),
     }),
     bucket: AWS_S3_BUCKET_NAME,
   };

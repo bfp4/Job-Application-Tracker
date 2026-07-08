@@ -119,12 +119,15 @@ model ResumeAnalysis {
 }
 
 model FollowUp {
-  id            String      @id @default(cuid())
-  applicationId String
-  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  followUpDate  DateTime
-  note          String?
-  completed     Boolean     @default(false)
+  id             String      @id @default(cuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  followUpDate   DateTime
+  note           String?
+  completed      Boolean     @default(false)
+  // Set by the reminder Lambda after a digest email mentioning this
+  // follow-up is sent, so it is never emailed twice.
+  reminderSentAt DateTime?
 
   @@index([applicationId])
 }
