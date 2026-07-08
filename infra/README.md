@@ -55,7 +55,7 @@ None are secret.
 - **After 4**: `aws ssm get-parameter --name /jobtracker/prod/FIREBASE_PRIVATE_KEY --with-decryption --query Parameter.Value --output text` matches `prod.env` exactly.
 - **After 6**: `nslookup $DUCKDNS_HOST` returns the Elastic IP.
 - **After first deploy**: `curl https://$DUCKDNS_HOST/health` → `{"status":"ok"}` with a valid certificate; `/opt/app/.env` on the box has no `AWS_ACCESS_KEY_ID`; a resume upload works (instance role → S3).
-- **After 10**: seed a follow-up due today, `aws lambda invoke --function-name jobtracker-reminders out.json` → digest email arrives; invoke again → follow-up not re-sent (`reminderSentAt` set), not-applied applications still listed (by design).
+- **After 10**: seed a follow-up due within the next 3 days, `aws lambda invoke --function-name jobtracker-reminders out.json` → digest email arrives; invoke again the same day → follow-up not re-sent (`reminderSentAt` dedupes per day), not-applied applications still listed (by design). The follow-up reappears in each daily digest until its due date passes or it is completed.
 - **After 11**: direct `psql` to the RDS endpoint from your laptop times out; the tunnel works; deployed API + Lambda still work.
 
 ## SES notes

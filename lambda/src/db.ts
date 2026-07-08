@@ -21,6 +21,12 @@ export function createClient(): pg.Client {
   });
 }
 
+/**
+ * A follow-up is mentioned in the digest on each of the 3 days before its
+ * due date and on the day itself (UTC days — the schedule fires at 14:00
+ * UTC). reminderSentAt only dedupes within a day, so a manual re-invoke
+ * cannot double-send but tomorrow's run mentions the follow-up again.
+ */
 export async function fetchDueFollowUps(
   client: pg.Client
 ): Promise<DueFollowUpRow[]> {
@@ -36,9 +42,10 @@ export async function fetchDueFollowUps(
      JOIN "User" u         ON u.id  = a."userId"
      JOIN "JobPosting" jp  ON jp.id = a."jobPostingId"
      LEFT JOIN "Company" c ON c.id  = jp."companyId"
-     WHERE f."followUpDate" <= NOW()
+     WHERE f."followUpDate" >= date_trunc('day', NOW())
+       AND f."followUpDate" <  date_trunc('day', NOW()) + interval '4 days'
        AND f.completed = false
-       AND f."reminderSentAt" IS NULL
+       AND (f."reminderSentAt" IS NULL OR f."reminderSentAt" < date_trunc('day', NOW()))
      ORDER BY u.email, f."followUpDate"`
   );
   return result.rows;

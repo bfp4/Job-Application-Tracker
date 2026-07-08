@@ -125,8 +125,9 @@ model FollowUp {
   followUpDate   DateTime
   note           String?
   completed      Boolean     @default(false)
-  // Set by the reminder Lambda after a digest email mentioning this
-  // follow-up is sent, so it is never emailed twice.
+  // Last time the reminder Lambda mentioned this follow-up in a digest.
+  // Dedupes within a day; the digest re-mentions it each day from 3 days
+  // before the due date through the day itself.
   reminderSentAt DateTime?
 
   @@index([applicationId])

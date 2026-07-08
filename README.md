@@ -9,7 +9,7 @@ Try out the project: https://jobstrackeragent.vercel.app/
 - **Application pipeline** — track every job by status, applied date, and notes, grouped by stage.
 - **Job entry with smart inputs** — Google Places autocomplete for locations, company-name autocomplete, multi-location postings, salary and description capture.
 - **Follow-up reminders** — per-application follow-up checklist, surfaced on the dashboard.
-- **Daily reminder emails** — a scheduled Lambda emails each user a morning digest of follow-ups due (each mentioned once) and applications still waiting to be submitted (nudged daily until applied).
+- **Daily reminder emails** — a scheduled Lambda emails each user a morning digest of upcoming follow-ups (mentioned daily from 3 days before the due date through the day itself) and applications still waiting to be submitted (nudged daily until applied).
 - **Resume storage** — PDF upload to S3, automatically converted to Markdown for AI consumption.
 - **AI resume tips** — one click on any application runs a Claude agent over your full resume and the posting's details, returning a structured analysis: overall fit summary, technologies to study (ranked, with reasons), gaps in the resume, concrete bullet-point rewrites, strengths to highlight, and interview-prep tips. Results are saved, and a re-run is only allowed once your resume or the posting has actually changed.
 
