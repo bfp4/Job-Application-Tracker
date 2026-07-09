@@ -86,6 +86,22 @@ if ! aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_
   echo "OIDC provider created."
 fi
 
+# SendCommand is scoped to the exact API instance. A tag condition
+# (ssm:resourceTag) would be nicer but was denied in practice; if the
+# instance is ever replaced, re-run this script to refresh the ARN.
+INSTANCE_ID_FOR_POLICY="$(aws ec2 describe-instances \
+  --filters "Name=tag:App,Values=$APP" "Name=instance-state-name,Values=pending,running" \
+  --query "Reservations[0].Instances[0].InstanceId" --output text)"
+if [ "$INSTANCE_ID_FOR_POLICY" = "None" ] || [ -z "$INSTANCE_ID_FOR_POLICY" ]; then
+  # Instance not launched yet (03 runs before 05 on first setup): allow any
+  # instance in the account/region until a re-run pins it down.
+  INSTANCE_ARN="arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/*"
+  echo "NOTE: no ${APP} instance found — SendCommand scoped to instance/*."
+  echo "      Re-run this script after 05-ec2.sh to pin it to the instance."
+else
+  INSTANCE_ARN="arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/${INSTANCE_ID_FOR_POLICY}"
+fi
+
 cat >"$tmp/gh-trust.json" <<EOF
 {
   "Version": "2012-10-17",
@@ -132,10 +148,7 @@ cat >"$tmp/gh-policy.json" <<EOF
       "Sid": "DeployViaSsmInstance",
       "Effect": "Allow",
       "Action": "ssm:SendCommand",
-      "Resource": "arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/*",
-      "Condition": {
-        "StringEquals": {"ssm:resourceTag/App": "${APP}"}
-      }
+      "Resource": "${INSTANCE_ARN}"
     },
     {
       "Sid": "DeployViaSsmDocument",
