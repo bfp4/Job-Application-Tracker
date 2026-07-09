@@ -134,7 +134,7 @@ cat >"$tmp/gh-policy.json" <<EOF
       "Action": "ssm:SendCommand",
       "Resource": "arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/*",
       "Condition": {
-        "StringEquals": {"aws:ResourceTag/App": "${APP}"}
+        "StringEquals": {"ssm:resourceTag/App": "${APP}"}
       }
     },
     {
