@@ -10,7 +10,7 @@ const { prismaMock, getObjectTextMock, generateQuestionAnswerMock } = vi.hoisted
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
     baseResume: { findFirst: vi.fn() },
   },
@@ -147,20 +147,20 @@ describe("application questions endpoints", () => {
 
   describe("DELETE /api/questions/:id", () => {
     it("returns 404 for a question the user does not own", async () => {
-      prismaMock.applicationQuestion.findFirst.mockResolvedValue(null);
+      prismaMock.applicationQuestion.deleteMany.mockResolvedValue({ count: 0 });
 
       expect((await request(app).delete("/api/questions/question-1")).status).toBe(404);
-      expect(prismaMock.applicationQuestion.delete).not.toHaveBeenCalled();
     });
 
     it("deletes an owned question", async () => {
-      prismaMock.applicationQuestion.findFirst.mockResolvedValue(questionRow());
+      prismaMock.applicationQuestion.deleteMany.mockResolvedValue({ count: 1 });
 
       const res = await request(app).delete("/api/questions/question-1");
 
       expect(res.status).toBe(204);
-      expect(prismaMock.applicationQuestion.delete).toHaveBeenCalledWith({
-        where: { id: "question-1" },
+      // Ownership is enforced inside the deleteMany filter itself.
+      expect(prismaMock.applicationQuestion.deleteMany).toHaveBeenCalledWith({
+        where: { id: "question-1", application: { userId: "user-1" } },
       });
     });
   });
