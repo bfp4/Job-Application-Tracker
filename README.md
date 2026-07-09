@@ -99,7 +99,9 @@ Provisioning is scripted end-to-end in [`infra/`](infra/README.md) (idempotent A
 Your laptop can no longer reach RDS directly. For `prisma migrate dev` / `prisma studio`, open an SSH tunnel through the API instance first:
 
 ```bash
-ssh -i infra/jobtracker-key.pem -N -L 5433:<rds-endpoint>:5432 ec2-user@<your-host>.duckdns.org
+ssh -i infra/jobtracker-key.pem -N -L 15433:<rds-endpoint>:5432 ec2-user@<your-host>.duckdns.org
 ```
 
-then point `DATABASE_URL` at `localhost:5433` in `server/.env`.
+then point `DATABASE_URL` at `localhost:15433` in `server/.env`. (15433 rather
+than 5433: Windows reserves swaths of low ports for Hyper-V, and 5433 falls in
+an excluded range on some machines.)
