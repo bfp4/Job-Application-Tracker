@@ -95,11 +95,11 @@ INSTANCE_ID_FOR_POLICY="$(aws ec2 describe-instances \
 if [ "$INSTANCE_ID_FOR_POLICY" = "None" ] || [ -z "$INSTANCE_ID_FOR_POLICY" ]; then
   # Instance not launched yet (03 runs before 05 on first setup): allow any
   # instance in the account/region until a re-run pins it down.
-  INSTANCE_ARN="arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/*"
+  INSTANCE_SUFFIX="*"
   echo "NOTE: no ${APP} instance found — SendCommand scoped to instance/*."
   echo "      Re-run this script after 05-ec2.sh to pin it to the instance."
 else
-  INSTANCE_ARN="arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/${INSTANCE_ID_FOR_POLICY}"
+  INSTANCE_SUFFIX="${INSTANCE_ID_FOR_POLICY}"
 fi
 
 cat >"$tmp/gh-trust.json" <<EOF
@@ -148,7 +148,10 @@ cat >"$tmp/gh-policy.json" <<EOF
       "Sid": "DeployViaSsmInstance",
       "Effect": "Allow",
       "Action": "ssm:SendCommand",
-      "Resource": "${INSTANCE_ARN}"
+      "Resource": [
+        "arn:aws:ec2:${AWS_REGION}:${ACCOUNT_ID}:instance/${INSTANCE_SUFFIX}",
+        "arn:aws:ssm:${AWS_REGION}:${ACCOUNT_ID}:managed-instance/${INSTANCE_SUFFIX}"
+      ]
     },
     {
       "Sid": "DeployViaSsmDocument",
