@@ -4,7 +4,8 @@ import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
-import { parseNullableDate } from "../lib/validation";
+import { createInFlightGuard } from "../lib/inFlight";
+import { isNonEmptyString, parseNullableDate } from "../lib/validation";
 import { getObjectText } from "../lib/s3";
 import {
   generateResumeTips,
@@ -25,6 +26,14 @@ function isApplicationStatus(value: unknown): value is ApplicationStatus {
 const applicationInclude = {
   jobPosting: { include: { company: true } },
   followUps: { orderBy: { followUpDate: "asc" as const } },
+  questions: { orderBy: { createdAt: "asc" as const } },
+};
+
+// The list/dashboard views never render questions (they can carry multi-
+// paragraph AI answers), so the list endpoint skips that join and payload.
+const applicationListInclude = {
+  jobPosting: applicationInclude.jobPosting,
+  followUps: applicationInclude.followUps,
 };
 
 /**
@@ -37,7 +46,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const applications = await prisma.application.findMany({
       where: { userId: req.user!.id },
-      include: applicationInclude,
+      include: applicationListInclude,
       orderBy: { createdAt: "desc" },
     });
     res.json({ applications });
@@ -238,9 +247,9 @@ async function loadResumeTipsContext(userId: string, applicationId: string) {
 }
 
 // Applications with a resume-tips generation currently running. Guards the
-// check-then-act window between the staleness read and the upsert, so
-// concurrent clicks (second tab, refresh) can't double-bill the LLM call.
-const generationsInFlight = new Set<string>();
+// check-then-act window between the staleness read and the upsert
+// (see lib/inFlight.ts).
+const generationsInFlight = createInFlightGuard();
 
 /**
  * GET /api/applications/:id/resume-tips
@@ -298,7 +307,7 @@ router.post(
       return;
     }
 
-    if (generationsInFlight.has(ctx.application.id)) {
+    if (!generationsInFlight.tryAcquire(ctx.application.id)) {
       res.status(409).json({
         error: "An analysis is already being generated for this application.",
         analysis: ctx.analysis ?? null,
@@ -307,7 +316,6 @@ router.post(
       return;
     }
 
-    generationsInFlight.add(ctx.application.id);
     try {
       const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
       const content = await generateResumeTips(
@@ -332,8 +340,41 @@ router.post(
 
       res.status(201).json({ analysis, upToDate: true, hasResume: true });
     } finally {
-      generationsInFlight.delete(ctx.application.id);
+      generationsInFlight.release(ctx.application.id);
     }
+  })
+);
+
+/**
+ * POST /api/applications/:id/questions
+ * Add a question from the application form. Answering (by hand or AI) happens
+ * through the /api/questions routes.
+ */
+router.post(
+  "/:id/questions",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { question } = req.body ?? {};
+
+    if (!isNonEmptyString(question)) {
+      res.status(400).json({ error: "`question` is required." });
+      return;
+    }
+
+    const application = await prisma.application.findFirst({
+      where: { id: req.params.id, userId: req.user!.id },
+    });
+
+    if (!application) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    const created = await prisma.applicationQuestion.create({
+      data: { applicationId: application.id, question: question.trim() },
+    });
+
+    res.status(201).json({ question: created });
   })
 );
 

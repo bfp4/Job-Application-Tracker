@@ -12,6 +12,10 @@ out/
 # Lambda deployment package
 function.zip
 
+# Infra: production secrets and the EC2 private key never enter git
+infra/prod.env
+*.pem
+
 # Environment variables
 .env
 .env.local

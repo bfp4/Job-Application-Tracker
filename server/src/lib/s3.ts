@@ -14,8 +14,10 @@ interface S3Config {
 }
 
 // Lazily build the S3 client so the server can still boot before AWS
-// credentials are configured. The first call to an S3 helper validates the
-// environment and throws if anything is missing.
+// configuration exists. The first call to an S3 helper validates the region
+// and bucket; credentials are validated only as a pair — when absent, the
+// SDK's default provider chain (EC2 instance role, ~/.aws) supplies them,
+// and a missing chain surfaces as a CredentialsProviderError at request time.
 let cached: S3Config | null = null;
 
 function getS3(): S3Config {
@@ -28,26 +30,35 @@ function getS3(): S3Config {
     AWS_S3_BUCKET_NAME,
   } = process.env;
 
-  if (
-    !AWS_REGION ||
-    !AWS_ACCESS_KEY_ID ||
-    !AWS_SECRET_ACCESS_KEY ||
-    !AWS_S3_BUCKET_NAME
-  ) {
+  if (!AWS_REGION || !AWS_S3_BUCKET_NAME) {
     throw new Error(
-      "Missing AWS S3 configuration. Set AWS_REGION, AWS_ACCESS_KEY_ID, " +
-        "AWS_SECRET_ACCESS_KEY and AWS_S3_BUCKET_NAME in the server environment."
+      "Missing AWS S3 configuration. Set AWS_REGION and AWS_S3_BUCKET_NAME " +
+        "in the server environment."
     );
   }
 
+  // A lone key id or secret is always a config mistake (half-pasted .env);
+  // fail fast instead of silently falling through to the provider chain.
+  if (Boolean(AWS_ACCESS_KEY_ID) !== Boolean(AWS_SECRET_ACCESS_KEY)) {
+    throw new Error(
+      "Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or neither " +
+        "(on EC2 the instance role supplies credentials)."
+    );
+  }
+
+  // Explicit credentials are only used when both keys are present (local
+  // dev). Otherwise the SDK's default provider chain resolves them — on EC2
+  // that's the instance role via IMDS, so no static keys live on the box.
+  const credentials =
+    AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: AWS_ACCESS_KEY_ID,
+          secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined;
+
   cached = {
-    client: new S3Client({
-      region: AWS_REGION,
-      credentials: {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      },
-    }),
+    client: new S3Client({ region: AWS_REGION, credentials }),
     bucket: AWS_S3_BUCKET_NAME,
   };
 

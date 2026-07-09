@@ -82,9 +82,27 @@ model Application {
   updatedAt      DateTime          @updatedAt
   followUps      FollowUp[]
   resumeAnalysis ResumeAnalysis?
+  questions      ApplicationQuestion[]
 
   @@unique([userId, jobPostingId])
   @@index([userId])
+  // The daily reminder Lambda scans for status = NOT_APPLIED across all users.
+  @@index([status])
+}
+
+// A question asked on the job application form (e.g. "What project are you
+// most proud of?"), with the user's answer. The answer can be AI-drafted from
+// the resume + posting and then edited by hand — the row doesn't distinguish.
+model ApplicationQuestion {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question      String
+  answer        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([applicationId])
 }
 
 // One saved resume-tips analysis per application. baseResumeId and
@@ -102,13 +120,22 @@ model ResumeAnalysis {
   updatedAt      DateTime    @updatedAt
 }
 
+// NOTE: lambda/src/db.ts queries this model (and Application/User/JobPosting/
+// Company) with raw SQL — renames here must be mirrored there by hand.
 model FollowUp {
-  id            String      @id @default(cuid())
-  applicationId String
-  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  followUpDate  DateTime
-  note          String?
-  completed     Boolean     @default(false)
+  id             String      @id @default(cuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  followUpDate   DateTime
+  note           String?
+  completed      Boolean     @default(false)
+  // Last time the reminder Lambda mentioned this follow-up in a digest.
+  // Dedupes within a day; the digest re-mentions it each day from 3 days
+  // before the due date through the day itself.
+  reminderSentAt DateTime?
 
   @@index([applicationId])
+  // The daily reminder Lambda queries a 4-day followUpDate window across all
+  // users; without this it sequential-scans the whole table.
+  @@index([followUpDate])
 }

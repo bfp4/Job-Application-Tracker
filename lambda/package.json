@@ -1,0 +1,22 @@
+{
+  "name": "job-tracker-reminders",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scheduled Lambda that emails each user a digest of follow-ups due and applications not yet applied to",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.700.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.10"
+  }
+}

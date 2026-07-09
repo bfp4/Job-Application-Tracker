@@ -5,6 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  id-token: write # OIDC token for assuming the AWS deploy role
+  contents: read
+
+# KEEP IN SYNC with infra/env.sh ($APP-derived names and region).
+env:
+  AWS_REGION: us-east-2
+  ECR_REPO: jobtracker-api
+  LAMBDA_FUNCTION: jobtracker-reminders
+
 jobs:
   server:
     name: Server (typecheck + tests)
@@ -39,3 +49,120 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+
+  lambda:
+    name: Lambda (typecheck + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lambda/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
+  deploy-api:
+    name: Deploy API to EC2
+    needs: [server, client, lambda]
+    # Deploys only from main, and only once the infra exists (repo variables set).
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.INSTANCE_ID != '' && vars.DEPLOY_ROLE_ARN != ''
+    # arm runner: the image must be arm64 to run on the t4g instance.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push image
+        run: |
+          IMAGE="${{ vars.ECR_REGISTRY }}/${{ env.ECR_REPO }}"
+          docker build --platform linux/arm64 \
+            -t "$IMAGE:${GITHUB_SHA}" -t "$IMAGE:latest" server/
+          docker push "$IMAGE:${GITHUB_SHA}"
+          docker push "$IMAGE:latest"
+      - name: Deploy on instance via SSM
+        run: |
+          b64() { base64 -w0 "$1"; }
+          cat > commands.json <<EOF
+          {
+            "commands": [
+              "set -euo pipefail",
+              "mkdir -p /opt/app",
+              "echo '$(b64 deploy/docker-compose.yml)' | base64 -d > /opt/app/docker-compose.yml",
+              "echo '$(b64 deploy/Caddyfile)' | base64 -d > /opt/app/Caddyfile",
+              "echo '$(b64 deploy/render-env.sh)' | base64 -d > /opt/app/render-env.sh",
+              "echo '$(b64 deploy/on-instance-deploy.sh)' | base64 -d > /opt/app/on-instance-deploy.sh",
+              "chmod +x /opt/app/render-env.sh /opt/app/on-instance-deploy.sh",
+              "cd /opt/app && ./on-instance-deploy.sh"
+            ]
+          }
+          EOF
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "${{ vars.INSTANCE_ID }}" \
+            --document-name AWS-RunShellScript \
+            --timeout-seconds 600 \
+            --parameters file://commands.json \
+            --query "Command.CommandId" --output text)
+          echo "Command: $CMD_ID"
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" \
+              --instance-id "${{ vars.INSTANCE_ID }}" \
+              --query "Status" --output text 2>/dev/null || echo Pending)
+            echo "[$i] $STATUS"
+            case "$STATUS" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm get-command-invocation --command-id "$CMD_ID" \
+                  --instance-id "${{ vars.INSTANCE_ID }}" \
+                  --query "StandardErrorContent" --output text
+                exit 1 ;;
+            esac
+            if [ "$i" = 60 ]; then echo "Timed out waiting for deploy"; exit 1; fi
+            sleep 10
+          done
+          aws ssm get-command-invocation --command-id "$CMD_ID" \
+            --instance-id "${{ vars.INSTANCE_ID }}" \
+            --query "StandardOutputContent" --output text
+      - name: Smoke test
+        run: curl -fsS --retry 5 --retry-delay 5 "https://${{ vars.DUCKDNS_HOST }}/health"
+
+  deploy-lambda:
+    name: Deploy reminder Lambda
+    needs: [server, client, lambda]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lambda/package-lock.json
+      - name: Build bundle
+        working-directory: lambda
+        run: |
+          npm ci
+          node build.mjs
+          zip -j function.zip dist/index.js
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Update function code
+        working-directory: lambda
+        run: |
+          if ! aws lambda get-function --function-name "$LAMBDA_FUNCTION" >/dev/null 2>&1; then
+            echo "Function not provisioned yet (infra/09-lambda.sh) — skipping."
+            exit 0
+          fi
+          aws lambda update-function-code \
+            --function-name "$LAMBDA_FUNCTION" \
+            --zip-file fileb://function.zip
