@@ -6,7 +6,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-tmp="$(mktemp -d)"
+tmp="$(winpath "$(mktemp -d)")"
 trap 'rm -rf "$tmp"' EXIT
 
 ensure_role() {

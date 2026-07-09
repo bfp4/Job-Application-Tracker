@@ -38,7 +38,7 @@ else
   SUBNET_ID="$(vpc_subnet_ids | awk '{print $1}')"
   echo "AMI: $AMI_ID  Subnet: $SUBNET_ID"
 
-  USERDATA="$(mktemp)"
+  USERDATA="$(winpath "$(mktemp)")"
   cat >"$USERDATA" <<EOF
 #!/bin/bash
 set -euxo pipefail

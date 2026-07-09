@@ -7,6 +7,12 @@
 # MSYS_NO_PATHCONV disables that for every aws call in these scripts.
 export MSYS_NO_PATHCONV=1
 
+# With path conversion off, the Windows aws.exe can no longer read POSIX
+# paths like /tmp/... in file:// parameters — convert explicitly instead.
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
 export AWS_REGION="${AWS_REGION:-us-east-2}"
 export APP="jobtracker"
 export GITHUB_REPO="bfp4/Job-Application-Tracker"

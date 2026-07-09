@@ -4,7 +4,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-tmp="$(mktemp -d)"
+tmp="$(winpath "$(mktemp -d)")"
 trap 'rm -rf "$tmp"' EXIT
 
 LAMBDA_ARN="$(aws lambda get-function --function-name "$LAMBDA_FUNCTION" \

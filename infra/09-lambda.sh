@@ -10,7 +10,7 @@ LAMBDA_DIR="$(dirname "$0")/../lambda"
 
 # ---------- build + zip ----------
 (cd "$LAMBDA_DIR" && npm ci && node build.mjs)
-ZIP="$LAMBDA_DIR/function.zip"
+ZIP="$(winpath "$LAMBDA_DIR/function.zip")"
 rm -f "$ZIP"
 if command -v zip >/dev/null 2>&1; then
   (cd "$LAMBDA_DIR/dist" && zip -q ../function.zip index.js)
@@ -29,7 +29,7 @@ DATABASE_URL="$(aws ssm get-parameter --name "${SSM_PATH}/DATABASE_URL" \
   --with-decryption --query "Parameter.Value" --output text)"
 
 # JSON via node so special characters in the connection string survive.
-ENV_JSON="$LAMBDA_DIR/.env-vars.json"
+ENV_JSON="$(winpath "$LAMBDA_DIR/.env-vars.json")"
 DB_URL="$DATABASE_URL" SES_FROM_ADDR="$SES_IDENTITY" node -e '
   const fs = require("fs");
   fs.writeFileSync(process.argv[1], JSON.stringify({

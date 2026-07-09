@@ -27,7 +27,7 @@ KEYS=(
   ANTHROPIC_API_KEY
 )
 
-tmp="$(mktemp)"
+tmp="$(winpath "$(mktemp)")"
 trap 'rm -f "$tmp"' EXIT
 
 for key in "${KEYS[@]}"; do
