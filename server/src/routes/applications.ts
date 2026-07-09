@@ -6,6 +6,7 @@ import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
 import { createInFlightGuard } from "../lib/inFlight";
 import { isNonEmptyString, parseNullableDate } from "../lib/validation";
+import { parseContactFields } from "../lib/contactInput";
 import { getObjectText } from "../lib/s3";
 import {
   generateResumeTips,
@@ -27,6 +28,7 @@ const applicationInclude = {
   jobPosting: { include: { company: true } },
   followUps: { orderBy: { followUpDate: "asc" as const } },
   questions: { orderBy: { createdAt: "asc" as const } },
+  contacts: { orderBy: { createdAt: "asc" as const } },
 };
 
 // The list/dashboard views never render questions (they can carry multi-
@@ -375,6 +377,45 @@ router.post(
     });
 
     res.status(201).json({ question: created });
+  })
+);
+
+/**
+ * POST /api/applications/:id/contacts
+ * Add a person the user is in contact with about this application. Edits and
+ * removal happen through the /api/contacts routes.
+ */
+router.post(
+  "/:id/contacts",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = parseContactFields(req.body ?? {});
+
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+
+    const { name, ...optionalFields } = parsed.data;
+    if (name === undefined) {
+      res.status(400).json({ error: "`name` is required." });
+      return;
+    }
+
+    const application = await prisma.application.findFirst({
+      where: { id: req.params.id, userId: req.user!.id },
+    });
+
+    if (!application) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    const contact = await prisma.contact.create({
+      data: { applicationId: application.id, name, ...optionalFields },
+    });
+
+    res.status(201).json({ contact });
   })
 );
 

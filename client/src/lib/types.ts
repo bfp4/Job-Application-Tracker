@@ -36,6 +36,20 @@ export interface FollowUp {
   completed: boolean;
 }
 
+/** A person the user is in contact with about an application. */
+export interface Contact {
+  id: string;
+  applicationId: string;
+  name: string;
+  position: string | null;
+  linkedinUrl: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A question from the application form, with a (possibly AI-drafted) answer. */
 export interface ApplicationQuestion {
   id: string;
@@ -58,6 +72,7 @@ export interface Application {
   jobPosting?: JobPosting;
   followUps?: FollowUp[];
   questions?: ApplicationQuestion[];
+  contacts?: Contact[];
 }
 
 export interface BaseResume {

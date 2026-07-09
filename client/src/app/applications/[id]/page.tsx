@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
 import QuestionsSection from "@/components/QuestionsSection";
+import ContactsSection from "@/components/ContactsSection";
 import { apiFetch } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
@@ -16,6 +17,7 @@ import type {
   Application,
   ApplicationQuestion,
   ApplicationStatus,
+  Contact,
   FollowUp,
 } from "@/lib/types";
 
@@ -121,6 +123,13 @@ export default function ApplicationDetailPage() {
   ) {
     setApplication((prev) =>
       prev ? { ...prev, questions: updater(prev.questions ?? []) } : prev
+    );
+  }
+
+  // Same pattern for contacts.
+  function setContacts(updater: (contacts: Contact[]) => Contact[]) {
+    setApplication((prev) =>
+      prev ? { ...prev, contacts: updater(prev.contacts ?? []) } : prev
     );
   }
 
@@ -257,6 +266,12 @@ export default function ApplicationDetailPage() {
               applicationId={id}
               questions={application.questions ?? []}
               setQuestions={setQuestions}
+            />
+
+            <ContactsSection
+              applicationId={id}
+              contacts={application.contacts ?? []}
+              setContacts={setContacts}
             />
 
             <FollowUpsSection

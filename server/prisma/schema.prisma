@@ -83,11 +83,30 @@ model Application {
   followUps      FollowUp[]
   resumeAnalysis ResumeAnalysis?
   questions      ApplicationQuestion[]
+  contacts       Contact[]
 
   @@unique([userId, jobPostingId])
   @@index([userId])
   // The daily reminder Lambda scans for status = NOT_APPLIED across all users.
   @@index([status])
+}
+
+// A person the user is in contact with about this application
+// (recruiter, hiring manager, referral, ...).
+model Contact {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  name          String
+  position      String?
+  linkedinUrl   String?
+  phone         String?
+  email         String?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([applicationId])
 }
 
 // A question asked on the job application form (e.g. "What project are you
