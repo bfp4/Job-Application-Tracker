@@ -8,6 +8,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
 import QuestionsSection from "@/components/QuestionsSection";
 import ContactsSection from "@/components/ContactsSection";
+import SourceInput from "@/components/SourceInput";
 import { apiFetch } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
@@ -32,6 +33,7 @@ export default function ApplicationDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
+  const [sourceDraft, setSourceDraft] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,6 +48,7 @@ export default function ApplicationDetailPage() {
       const data = (await res.json()) as { application: Application };
       setApplication(data.application);
       setNotesDraft(data.application.notes ?? "");
+      setSourceDraft(data.application.source ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load.");
     } finally {
@@ -84,6 +87,16 @@ export default function ApplicationDetailPage() {
       await patchApplication({ appliedDate: value || null });
     } catch {
       setError("Failed to update applied date.");
+    }
+  }
+
+  async function handleSourceBlur() {
+    if (!application || sourceDraft.trim() === (application.source ?? "")) return;
+    setError(null);
+    try {
+      await patchApplication({ source: sourceDraft.trim() || null });
+    } catch {
+      setError("Failed to save source.");
     }
   }
 
@@ -244,6 +257,19 @@ export default function ApplicationDetailPage() {
                     onChange={(e) => handleAppliedDateChange(e.target.value)}
                     className={`mt-1 w-full ${inputClassName}`}
                   />
+                </div>
+                <div>
+                  <label htmlFor="source" className="block text-sm font-medium text-gray-700">
+                    Where you found it
+                  </label>
+                  <div className="mt-1">
+                    <SourceInput
+                      id="source"
+                      value={sourceDraft}
+                      onChange={setSourceDraft}
+                      onBlur={handleSourceBlur}
+                    />
+                  </div>
                 </div>
               </div>
 

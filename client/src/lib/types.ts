@@ -67,6 +67,7 @@ export interface Application {
   status: ApplicationStatus;
   appliedDate: string | null;
   notes: string | null;
+  source: string | null;
   createdAt: string;
   updatedAt: string;
   jobPosting?: JobPosting;

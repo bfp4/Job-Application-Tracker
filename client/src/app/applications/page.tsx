@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
 import LocationInput from "@/components/LocationInput";
 import CompanyInput from "@/components/CompanyInput";
+import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
@@ -27,6 +28,7 @@ export default function ApplicationsPage() {
   const [companyName, setCompanyName] = useState("");
   const [locations, setLocations] = useState<string[]>([]);
   const [salary, setSalary] = useState("");
+  const [source, setSource] = useState("");
   const [description, setDescription] = useState("");
   const [addingJob, setAddingJob] = useState(false);
   const [addJobError, setAddJobError] = useState<string | null>(null);
@@ -72,7 +74,10 @@ export default function ApplicationsPage() {
       });
       const { application } = await apiJson<{ application: Application }>("/api/applications", {
         method: "POST",
-        body: JSON.stringify({ jobPostingId: jobPosting.id }),
+        body: JSON.stringify({
+          jobPostingId: jobPosting.id,
+          source: source.trim() || null,
+        }),
       });
       // No form reset needed — navigating away unmounts this page.
       router.push(`/applications/${application.id}`);
@@ -194,6 +199,19 @@ export default function ApplicationsPage() {
                 placeholder="e.g. $120k–$150k, or DOE"
                 className={`mt-1 w-full ${inputClassName}`}
               />
+            </div>
+            <div>
+              <label htmlFor="source" className="block text-xs font-medium text-gray-700">
+                Where you found it
+              </label>
+              <div className="mt-1">
+                <SourceInput
+                  id="source"
+                  value={source}
+                  onChange={setSource}
+                  disabled={addingJob}
+                />
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="description" className="block text-xs font-medium text-gray-700">

@@ -77,6 +77,8 @@ model Application {
   jobPosting   JobPosting        @relation(fields: [jobPostingId], references: [id])
   status       ApplicationStatus @default(NOT_APPLIED)
   notes        String?
+  // Where the user found the job (LinkedIn, referral, ...). Free text.
+  source       String?
   appliedDate  DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt

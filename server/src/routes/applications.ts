@@ -5,7 +5,11 @@ import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
 import { createInFlightGuard } from "../lib/inFlight";
-import { isNonEmptyString, parseNullableDate } from "../lib/validation";
+import {
+  isNonEmptyString,
+  isNullableString,
+  parseNullableDate,
+} from "../lib/validation";
 import { parseContactFields } from "../lib/contactInput";
 import { getObjectText } from "../lib/s3";
 import {
@@ -85,7 +89,7 @@ router.post(
   "/",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const { jobPostingId, status } = req.body ?? {};
+    const { jobPostingId, status, source } = req.body ?? {};
 
     if (typeof jobPostingId !== "string" || jobPostingId.trim() === "") {
       res.status(400).json({ error: "`jobPostingId` is required." });
@@ -96,6 +100,11 @@ router.post(
       res.status(400).json({
         error: `\`status\` must be one of: ${VALID_STATUSES.join(", ")}.`,
       });
+      return;
+    }
+
+    if (!isNullableString(source)) {
+      res.status(400).json({ error: "`source` must be a string or null." });
       return;
     }
 
@@ -125,6 +134,7 @@ router.post(
         userId: req.user!.id,
         jobPostingId,
         ...(status ? { status } : {}),
+        ...(isNonEmptyString(source) ? { source: source.trim() } : {}),
       },
       include: applicationInclude,
     });
@@ -135,13 +145,13 @@ router.post(
 
 /**
  * PATCH /api/applications/:id
- * Update status, notes and/or appliedDate.
+ * Update status, notes, source and/or appliedDate.
  */
 router.patch(
   "/:id",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const { status, notes, appliedDate } = req.body ?? {};
+    const { status, notes, source, appliedDate } = req.body ?? {};
     const data: Prisma.ApplicationUpdateInput = {};
 
     if (status !== undefined) {
@@ -160,6 +170,14 @@ router.patch(
         return;
       }
       data.notes = notes;
+    }
+
+    if (source !== undefined) {
+      if (!isNullableString(source)) {
+        res.status(400).json({ error: "`source` must be a string or null." });
+        return;
+      }
+      data.source = source === null ? null : source.trim() || null;
     }
 
     if (appliedDate !== undefined) {
