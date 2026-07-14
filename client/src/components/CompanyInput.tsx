@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import CopyButton from "@/components/CopyButton";
 import { inputClassName } from "@/lib/ui";
 
 interface CompanySuggestion {
@@ -103,8 +104,9 @@ export default function CompanyInput({ value, onChange, disabled, required, id }
         onKeyDown={handleKeyDown}
         disabled={disabled}
         autoComplete="off"
-        className={`w-full ${inputClassName}`}
+        className={`w-full pr-9 ${inputClassName}`}
       />
+      <CopyButton value={value} className="absolute right-1.5 top-1/2 -translate-y-1/2" />
       {isOpen && suggestions.length > 0 && (
         <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 bg-white text-sm shadow-lg">
           {suggestions.map((suggestion, index) => (

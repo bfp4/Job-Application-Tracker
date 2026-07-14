@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
+import { CopyField } from "@/components/CopyButton";
 import { inputClassName } from "@/lib/ui";
 import type { ApplicationQuestion } from "@/lib/types";
 
@@ -192,15 +193,19 @@ function QuestionItem({
         </button>
       </div>
 
-      <textarea
-        value={answerDraft}
-        onChange={(e) => setAnswerDraft(e.target.value)}
-        onBlur={handleBlur}
-        rows={answerDraft ? 6 : 3}
-        disabled={drafting}
-        className={`mt-3 w-full bg-white ${inputClassName}`}
-        placeholder="Your answer — write it yourself or draft it with AI."
-      />
+      <div className="mt-3">
+        <CopyField value={answerDraft} multiline>
+          <textarea
+            value={answerDraft}
+            onChange={(e) => setAnswerDraft(e.target.value)}
+            onBlur={handleBlur}
+            rows={answerDraft ? 6 : 3}
+            disabled={drafting}
+            className={`w-full bg-white pr-9 ${inputClassName}`}
+            placeholder="Your answer — write it yourself or draft it with AI."
+          />
+        </CopyField>
+      </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {answerDraft.trim() !== "" && (
@@ -273,13 +278,17 @@ function AddQuestionForm({
     <form onSubmit={handleSubmit} className="mt-4 flex items-end gap-2">
       <div className="flex-1">
         <label className="block text-xs font-medium text-gray-700">Question</label>
-        <input
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder='e.g. "What is something you worked on that you are proud of?"'
-          className={`mt-1 w-full ${inputClassName}`}
-        />
+        <div className="mt-1">
+          <CopyField value={question}>
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder='e.g. "What is something you worked on that you are proud of?"'
+              className={`w-full pr-9 ${inputClassName}`}
+            />
+          </CopyField>
+        </div>
       </div>
       <button
         type="submit"

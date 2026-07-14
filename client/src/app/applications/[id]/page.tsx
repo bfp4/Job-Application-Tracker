@@ -8,6 +8,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
 import QuestionsSection from "@/components/QuestionsSection";
 import ContactsSection from "@/components/ContactsSection";
+import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
@@ -275,14 +276,18 @@ export default function ApplicationDetailPage() {
 
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700">Notes</label>
-                <textarea
-                  value={notesDraft}
-                  onChange={(e) => setNotesDraft(e.target.value)}
-                  onBlur={handleNotesBlur}
-                  rows={4}
-                  className={`mt-1 w-full ${inputClassName}`}
-                  placeholder="Notes on this application…"
-                />
+                <div className="mt-1">
+                  <CopyField value={notesDraft} multiline>
+                    <textarea
+                      value={notesDraft}
+                      onChange={(e) => setNotesDraft(e.target.value)}
+                      onBlur={handleNotesBlur}
+                      rows={4}
+                      className={`w-full pr-9 ${inputClassName}`}
+                      placeholder="Notes on this application…"
+                    />
+                  </CopyField>
+                </div>
               </div>
             </div>
 
@@ -412,13 +417,17 @@ function FollowUpsSection({
         </div>
         <div className="flex-1">
           <label className="block text-xs font-medium text-gray-700">Note</label>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. Send thank-you email"
-            className={`mt-1 w-full ${inputClassName}`}
-          />
+          <div className="mt-1">
+            <CopyField value={note}>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. Send thank-you email"
+                className={`w-full pr-9 ${inputClassName}`}
+              />
+            </CopyField>
+          </div>
         </div>
         <button
           type="submit"

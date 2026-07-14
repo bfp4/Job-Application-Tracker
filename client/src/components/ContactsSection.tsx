@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
+import { CopyField } from "@/components/CopyButton";
 import { inputClassName } from "@/lib/ui";
 import type { Contact } from "@/lib/types";
 
@@ -306,25 +307,33 @@ function ContactForm({
         {textInputs.map(({ field, label, type, placeholder }) => (
           <div key={field}>
             <label className="block text-xs font-medium text-gray-700">{label}</label>
-            <input
-              type={type ?? "text"}
-              value={fields[field]}
-              onChange={(e) => setField(field, e.target.value)}
-              placeholder={placeholder}
-              className={`mt-1 w-full bg-white ${inputClassName}`}
-            />
+            <div className="mt-1">
+              <CopyField value={fields[field]}>
+                <input
+                  type={type ?? "text"}
+                  value={fields[field]}
+                  onChange={(e) => setField(field, e.target.value)}
+                  placeholder={placeholder}
+                  className={`w-full bg-white pr-9 ${inputClassName}`}
+                />
+              </CopyField>
+            </div>
           </div>
         ))}
       </div>
       <div className="mt-3">
         <label className="block text-xs font-medium text-gray-700">Notes</label>
-        <textarea
-          value={fields.notes}
-          onChange={(e) => setField("notes", e.target.value)}
-          rows={2}
-          placeholder="e.g. Met at the campus career fair — said to mention her referral."
-          className={`mt-1 w-full bg-white ${inputClassName}`}
-        />
+        <div className="mt-1">
+          <CopyField value={fields.notes} multiline>
+            <textarea
+              value={fields.notes}
+              onChange={(e) => setField("notes", e.target.value)}
+              rows={2}
+              placeholder="e.g. Met at the campus career fair — said to mention her referral."
+              className={`w-full bg-white pr-9 ${inputClassName}`}
+            />
+          </CopyField>
+        </div>
       </div>
       <div className="mt-3 flex items-center gap-2">
         <button

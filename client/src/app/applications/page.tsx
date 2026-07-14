@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
 import LocationInput from "@/components/LocationInput";
 import CompanyInput from "@/components/CompanyInput";
+import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -134,30 +135,38 @@ export default function ApplicationsPage() {
               <label htmlFor="jobUrl" className="block text-xs font-medium text-gray-700">
                 Job URL
               </label>
-              <input
-                id="jobUrl"
-                type="url"
-                required
-                value={jobUrl}
-                onChange={(e) => setJobUrl(e.target.value)}
-                placeholder="https://…"
-                disabled={addingJob}
-                className={`mt-1 w-full ${inputClassName}`}
-              />
+              <div className="mt-1">
+                <CopyField value={jobUrl}>
+                  <input
+                    id="jobUrl"
+                    type="url"
+                    required
+                    value={jobUrl}
+                    onChange={(e) => setJobUrl(e.target.value)}
+                    placeholder="https://…"
+                    disabled={addingJob}
+                    className={`w-full pr-9 ${inputClassName}`}
+                  />
+                </CopyField>
+              </div>
             </div>
             <div>
               <label htmlFor="title" className="block text-xs font-medium text-gray-700">
                 Title
               </label>
-              <input
-                id="title"
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                disabled={addingJob}
-                className={`mt-1 w-full ${inputClassName}`}
-              />
+              <div className="mt-1">
+                <CopyField value={title}>
+                  <input
+                    id="title"
+                    type="text"
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    disabled={addingJob}
+                    className={`w-full pr-9 ${inputClassName}`}
+                  />
+                </CopyField>
+              </div>
             </div>
             <div>
               <label htmlFor="companyName" className="block text-xs font-medium text-gray-700">
@@ -190,15 +199,19 @@ export default function ApplicationsPage() {
               <label htmlFor="salary" className="block text-xs font-medium text-gray-700">
                 Salary
               </label>
-              <input
-                id="salary"
-                type="text"
-                value={salary}
-                onChange={(e) => setSalary(e.target.value)}
-                disabled={addingJob}
-                placeholder="e.g. $120k–$150k, or DOE"
-                className={`mt-1 w-full ${inputClassName}`}
-              />
+              <div className="mt-1">
+                <CopyField value={salary}>
+                  <input
+                    id="salary"
+                    type="text"
+                    value={salary}
+                    onChange={(e) => setSalary(e.target.value)}
+                    disabled={addingJob}
+                    placeholder="e.g. $120k–$150k, or DOE"
+                    className={`w-full pr-9 ${inputClassName}`}
+                  />
+                </CopyField>
+              </div>
             </div>
             <div>
               <label htmlFor="source" className="block text-xs font-medium text-gray-700">
@@ -217,14 +230,18 @@ export default function ApplicationsPage() {
               <label htmlFor="description" className="block text-xs font-medium text-gray-700">
                 Description
               </label>
-              <textarea
-                id="description"
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                disabled={addingJob}
-                className={`mt-1 w-full ${inputClassName}`}
-              />
+              <div className="mt-1">
+                <CopyField value={description} multiline>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={addingJob}
+                    className={`w-full pr-9 ${inputClassName}`}
+                  />
+                </CopyField>
+              </div>
             </div>
           </div>
 
