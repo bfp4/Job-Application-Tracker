@@ -16,6 +16,56 @@ import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
 import type { Application, ApplicationStatus, JobPosting } from "@/lib/types";
 
+const SORT_OPTIONS = [
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+  { value: "appliedDate-desc", label: "Applied date (newest)" },
+  { value: "appliedDate-asc", label: "Applied date (oldest)" },
+  { value: "company-asc", label: "Company (A–Z)" },
+  { value: "title-asc", label: "Title (A–Z)" },
+] as const;
+
+type SortKey = (typeof SORT_OPTIONS)[number]["value"];
+
+function compareApplications(sortKey: SortKey, a: Application, b: Application): number {
+  switch (sortKey) {
+    case "createdAt-desc":
+      return b.createdAt.localeCompare(a.createdAt);
+    case "createdAt-asc":
+      return a.createdAt.localeCompare(b.createdAt);
+    case "appliedDate-desc":
+    case "appliedDate-asc": {
+      // Applications without an applied date sort last in either direction.
+      if (!a.appliedDate && !b.appliedDate) return 0;
+      if (!a.appliedDate) return 1;
+      if (!b.appliedDate) return -1;
+      return sortKey === "appliedDate-desc"
+        ? b.appliedDate.localeCompare(a.appliedDate)
+        : a.appliedDate.localeCompare(b.appliedDate);
+    }
+    case "company-asc":
+      return (a.jobPosting?.company?.name ?? "").localeCompare(
+        b.jobPosting?.company?.name ?? "",
+        undefined,
+        { sensitivity: "base" },
+      );
+    case "title-asc":
+      return (a.jobPosting?.title ?? "").localeCompare(b.jobPosting?.title ?? "", undefined, {
+        sensitivity: "base",
+      });
+  }
+}
+
+function matchesSearch(app: Application, query: string): boolean {
+  const haystack = [
+    app.jobPosting?.company?.name,
+    app.jobPosting?.title,
+    app.source,
+    ...(app.jobPosting?.location ?? []),
+  ];
+  return haystack.some((value) => value?.toLowerCase().includes(query));
+}
+
 export default function ApplicationsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -33,6 +83,9 @@ export default function ApplicationsPage() {
   const [description, setDescription] = useState("");
   const [addingJob, setAddingJob] = useState(false);
   const [addJobError, setAddJobError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt-desc");
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -89,12 +142,18 @@ export default function ApplicationsPage() {
     }
   }
 
+  const visibleApplications = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const filtered = query ? applications.filter((app) => matchesSearch(app, query)) : applications;
+    return [...filtered].sort((a, b) => compareApplications(sortKey, a, b));
+  }, [applications, search, sortKey]);
+
   const applicationsByStatus = useMemo(() => {
     const grouped = {} as Record<ApplicationStatus, Application[]>;
     for (const status of STATUS_ORDER) grouped[status] = [];
-    for (const app of applications) grouped[app.status].push(app);
+    for (const app of visibleApplications) grouped[app.status].push(app);
     return grouped;
-  }, [applications]);
+  }, [visibleApplications]);
 
   async function handleStatusChange(id: string, status: ApplicationStatus) {
     const previous = applications;
@@ -270,6 +329,41 @@ export default function ApplicationsPage() {
         )}
 
         {!loading && applications.length > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search company, title, location, source…"
+              aria-label="Search applications"
+              className={`w-full sm:max-w-xs ${inputClassName}`}
+            />
+            <label className="flex items-center gap-2 text-sm text-gray-500">
+              <span className="whitespace-nowrap">Sort by</span>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className={`bg-white ${inputClassName}`}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {!loading && applications.length > 0 && visibleApplications.length === 0 && (
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+            <p className="text-sm text-gray-500">
+              No applications match &ldquo;{search.trim()}&rdquo;.
+            </p>
+          </div>
+        )}
+
+        {!loading && visibleApplications.length > 0 && (
           <div className="space-y-6">
             {STATUS_ORDER.map((status) => {
               const apps = applicationsByStatus[status];
