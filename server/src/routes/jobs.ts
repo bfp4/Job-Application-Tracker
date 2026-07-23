@@ -8,8 +8,47 @@ import {
   isStringArray,
   isValidHttpUrl,
 } from "../lib/validation";
+import { ScrapeError, scrapeJobPosting } from "../services/scrapers";
 
 const router = Router();
+
+/**
+ * POST /api/jobs/scrape
+ * Given a pasted job URL, returns a normalized posting *preview* the client can
+ * use to prefill the add-job form. It does NOT write anything — the user still
+ * reviews the result and submits it through `POST /api/jobs`.
+ */
+router.post(
+  "/scrape",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { url } = req.body ?? {};
+    if (!isNonEmptyString(url)) {
+      res.status(400).json({ error: "`url` is required." });
+      return;
+    }
+
+    try {
+      const result = await scrapeJobPosting(url);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof ScrapeError) {
+        // Bad/unsupported URLs are the caller's mistake (400); a posting the
+        // provider couldn't locate is a well-formed but unprocessable request
+        // (422); anything upstream is a bad gateway (502).
+        const status =
+          err.code === "INVALID_URL" || err.code === "UNSUPPORTED_URL"
+            ? 400
+            : err.code === "NOT_FOUND"
+            ? 422
+            : 502;
+        res.status(status).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  })
+);
 
 /**
  * POST /api/jobs

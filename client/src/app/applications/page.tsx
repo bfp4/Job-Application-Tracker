@@ -14,7 +14,7 @@ import { formatDate } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
-import type { Application, ApplicationStatus, JobPosting } from "@/lib/types";
+import type { Application, ApplicationStatus, JobPosting, ScrapedPosting } from "@/lib/types";
 
 const SORT_OPTIONS = [
   { value: "createdAt-desc", label: "Newest first" },
@@ -83,6 +83,8 @@ export default function ApplicationsPage() {
   const [description, setDescription] = useState("");
   const [addingJob, setAddingJob] = useState(false);
   const [addJobError, setAddJobError] = useState<string | null>(null);
+  const [scraping, setScraping] = useState(false);
+  const [autofillNote, setAutofillNote] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("createdAt-desc");
@@ -107,6 +109,35 @@ export default function ApplicationsPage() {
       void loadApplications();
     }
   }, [authLoading, user, loadApplications]);
+
+  async function handleAutofill() {
+    const url = jobUrl.trim();
+    if (!url || scraping || addingJob) return;
+
+    setScraping(true);
+    setAutofillNote(null);
+    setAddJobError(null);
+    try {
+      const { jobPosting } = await apiJson<{ source: string; jobPosting: ScrapedPosting }>(
+        "/api/jobs/scrape",
+        { method: "POST", body: JSON.stringify({ url }) },
+      );
+      setTitle(jobPosting.title);
+      setCompanyName(jobPosting.companyName);
+      setLocations(jobPosting.location);
+      setSalary(jobPosting.salary ?? "");
+      setDescription(jobPosting.description ?? "");
+      // Prefer the board's canonical URL over whatever the user pasted.
+      if (jobPosting.jobUrl) setJobUrl(jobPosting.jobUrl);
+      setAutofillNote("Filled in from the posting — review the details before saving.");
+    } catch (err) {
+      setAddJobError(
+        err instanceof Error ? err.message : "Couldn't autofill from that URL.",
+      );
+    } finally {
+      setScraping(false);
+    }
+  }
 
   async function handleAddJob(e: FormEvent) {
     e.preventDefault();
@@ -194,20 +225,34 @@ export default function ApplicationsPage() {
               <label htmlFor="jobUrl" className="block text-xs font-medium text-gray-700">
                 Job URL
               </label>
-              <div className="mt-1">
-                <CopyField value={jobUrl}>
-                  <input
-                    id="jobUrl"
-                    type="url"
-                    required
-                    value={jobUrl}
-                    onChange={(e) => setJobUrl(e.target.value)}
-                    placeholder="https://…"
-                    disabled={addingJob}
-                    className={`w-full pr-9 ${inputClassName}`}
-                  />
-                </CopyField>
+              <div className="mt-1 flex gap-2">
+                <div className="flex-1">
+                  <CopyField value={jobUrl}>
+                    <input
+                      id="jobUrl"
+                      type="url"
+                      required
+                      value={jobUrl}
+                      onChange={(e) => setJobUrl(e.target.value)}
+                      placeholder="https://…"
+                      disabled={addingJob || scraping}
+                      className={`w-full pr-9 ${inputClassName}`}
+                    />
+                  </CopyField>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAutofill}
+                  disabled={addingJob || scraping || !jobUrl.trim()}
+                  className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {scraping ? "Autofilling…" : "Autofill"}
+                </button>
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Paste an AshbyHQ job link and we&apos;ll fill in the details for you.
+              </p>
+              {autofillNote && <p className="mt-1 text-xs text-green-700">{autofillNote}</p>}
             </div>
             <div>
               <label htmlFor="title" className="block text-xs font-medium text-gray-700">

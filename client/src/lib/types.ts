@@ -28,6 +28,21 @@ export interface JobPosting {
   company?: Company | null;
 }
 
+/**
+ * Preview of a job posting pulled from a supported board (e.g. Ashby) by
+ * `POST /api/jobs/scrape`. Used to prefill the add-job form; not persisted
+ * until the user submits.
+ */
+export interface ScrapedPosting {
+  title: string;
+  companyName: string;
+  location: string[];
+  salary: string | null;
+  description: string | null;
+  jobUrl: string;
+  postedDate: string | null;
+}
+
 export interface FollowUp {
   id: string;
   applicationId: string;
