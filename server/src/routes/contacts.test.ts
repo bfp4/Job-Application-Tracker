@@ -14,6 +14,13 @@ const { prismaMock } = vi.hoisted(() => ({
   },
 }));
 
+const { generateConnectMessageMock, getLatestBaseResumeMock, getObjectTextMock } =
+  vi.hoisted(() => ({
+    generateConnectMessageMock: vi.fn(),
+    getLatestBaseResumeMock: vi.fn(),
+    getObjectTextMock: vi.fn(),
+  }));
+
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -21,6 +28,13 @@ vi.mock("../middleware/auth", () => ({
     next();
   },
 }));
+vi.mock("../services/linkedinMessage", () => ({
+  generateConnectMessage: generateConnectMessageMock,
+}));
+vi.mock("../lib/baseResume", () => ({
+  getLatestBaseResume: getLatestBaseResumeMock,
+}));
+vi.mock("../lib/s3", () => ({ getObjectText: getObjectTextMock }));
 
 import applicationsRouter from "./applications";
 import contactsRouter from "./contacts";
@@ -40,6 +54,8 @@ function contactRow(overrides: Record<string, unknown> = {}) {
     phone: "+1 555 123 4567",
     email: "dana@company.com",
     notes: null,
+    linkedinStatus: "NONE",
+    connectMessage: null,
     ...overrides,
   };
 }
@@ -159,6 +175,112 @@ describe("contacts endpoints", () => {
         data: { position: "Director", notes: null },
       });
       expect(res.body.contact.position).toBe("Director");
+    });
+
+    it("updates the LinkedIn status", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(contactRow());
+      prismaMock.contact.update.mockResolvedValue(
+        contactRow({ linkedinStatus: "CONNECTED" })
+      );
+
+      const res = await request(app)
+        .patch("/api/contacts/contact-1")
+        .send({ linkedinStatus: "CONNECTED" });
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.contact.update).toHaveBeenCalledWith({
+        where: { id: "contact-1" },
+        data: { linkedinStatus: "CONNECTED" },
+      });
+    });
+
+    it("rejects an unknown LinkedIn status", async () => {
+      const res = await request(app)
+        .patch("/api/contacts/contact-1")
+        .send({ linkedinStatus: "PENDING" });
+
+      expect(res.status).toBe(400);
+      expect(prismaMock.contact.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a connectMessage over 300 characters", async () => {
+      const res = await request(app)
+        .patch("/api/contacts/contact-1")
+        .send({ connectMessage: "x".repeat(301) });
+
+      expect(res.status).toBe(400);
+      expect(prismaMock.contact.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /api/contacts/:id/connect-message", () => {
+    function contactWithApplication(overrides: Record<string, unknown> = {}) {
+      return {
+        ...contactRow(overrides),
+        application: {
+          status: "APPLIED",
+          notes: "Great culture fit.",
+          jobPosting: { title: "Backend Engineer", company: { name: "Acme" } },
+        },
+      };
+    }
+
+    it("returns 404 for a contact the user does not own", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(null);
+      getLatestBaseResumeMock.mockResolvedValue(null);
+
+      const res = await request(app).post("/api/contacts/contact-1/connect-message");
+
+      expect(res.status).toBe(404);
+      expect(generateConnectMessageMock).not.toHaveBeenCalled();
+    });
+
+    it("generates a message from the resume and saves it", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
+      getLatestBaseResumeMock.mockResolvedValue({ markdownS3Key: "resume.md" });
+      getObjectTextMock.mockResolvedValue("# Resume\nBackend engineer.");
+      generateConnectMessageMock.mockResolvedValue("Hi Dana, I applied for the role…");
+      prismaMock.contact.update.mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve(contactRow({ ...data }))
+      );
+
+      const res = await request(app).post("/api/contacts/contact-1/connect-message");
+
+      expect(res.status).toBe(201);
+      expect(getObjectTextMock).toHaveBeenCalledWith("resume.md");
+      expect(generateConnectMessageMock).toHaveBeenCalledWith(
+        { name: "Dana Smith", position: "Engineering Manager", notes: null },
+        expect.objectContaining({ title: "Backend Engineer" }),
+        "APPLIED",
+        "Great culture fit.",
+        "# Resume\nBackend engineer."
+      );
+      expect(prismaMock.contact.update).toHaveBeenCalledWith({
+        where: { id: "contact-1" },
+        data: { connectMessage: "Hi Dana, I applied for the role…" },
+      });
+      expect(res.body.contact.connectMessage).toBe("Hi Dana, I applied for the role…");
+    });
+
+    it("still generates a message when no resume is uploaded", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
+      getLatestBaseResumeMock.mockResolvedValue(null);
+      generateConnectMessageMock.mockResolvedValue("Hi Dana…");
+      prismaMock.contact.update.mockResolvedValue(
+        contactRow({ connectMessage: "Hi Dana…" })
+      );
+
+      const res = await request(app).post("/api/contacts/contact-1/connect-message");
+
+      expect(res.status).toBe(201);
+      expect(getObjectTextMock).not.toHaveBeenCalled();
+      expect(generateConnectMessageMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "APPLIED",
+        expect.anything(),
+        null
+      );
     });
   });
 

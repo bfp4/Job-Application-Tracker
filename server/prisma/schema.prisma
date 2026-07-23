@@ -93,6 +93,14 @@ model Application {
   @@index([status])
 }
 
+// Where the user is in the LinkedIn networking flow with a contact.
+enum LinkedinStatus {
+  NONE // No LinkedIn action taken yet.
+  CONNECTION_SENT // Connection request sent, not yet accepted.
+  CONNECTED // Connection accepted — now 1st-degree.
+  MESSAGING // Actively exchanging messages.
+}
+
 // A person the user is in contact with about this application
 // (recruiter, hiring manager, referral, ...).
 model Contact {
@@ -105,6 +113,11 @@ model Contact {
   phone         String?
   email         String?
   notes         String?
+  // Where the user stands in the LinkedIn networking flow with this person.
+  linkedinStatus LinkedinStatus @default(NONE)
+  // The last AI-drafted (and possibly hand-edited) LinkedIn connection note.
+  // Capped at 300 chars to match LinkedIn's connection-request limit.
+  connectMessage String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

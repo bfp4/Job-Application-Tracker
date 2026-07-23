@@ -36,6 +36,9 @@ export interface FollowUp {
   completed: boolean;
 }
 
+/** Where the user stands in the LinkedIn networking flow with a contact. */
+export type LinkedinStatus = "NONE" | "CONNECTION_SENT" | "CONNECTED" | "MESSAGING";
+
 /** A person the user is in contact with about an application. */
 export interface Contact {
   id: string;
@@ -46,6 +49,8 @@ export interface Contact {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  linkedinStatus: LinkedinStatus;
+  connectMessage: string | null;
   createdAt: string;
   updatedAt: string;
 }

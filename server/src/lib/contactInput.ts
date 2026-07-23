@@ -1,4 +1,12 @@
+import { LinkedinStatus } from "@prisma/client";
 import { isNonEmptyString, isNullableString, isValidHttpUrl } from "./validation";
+
+// LinkedIn's connection-request note is capped at 300 characters, so a stored
+// connectMessage never needs to exceed it. Exported so the AI generator and the
+// route validation share one source of truth.
+export const MAX_CONNECT_MESSAGE_CHARS = 300;
+
+const VALID_LINKEDIN_STATUSES = Object.values(LinkedinStatus);
 
 export type ContactFieldData = {
   name?: string;
@@ -7,6 +15,8 @@ export type ContactFieldData = {
   phone?: string | null;
   email?: string | null;
   notes?: string | null;
+  linkedinStatus?: LinkedinStatus;
+  connectMessage?: string | null;
 };
 
 /**
@@ -50,6 +60,36 @@ export function parseContactFields(
       return { ok: false, error: `\`${field}\` must be a string or null.` };
     }
     data[field] = value === null || value.trim() === "" ? null : value.trim();
+  }
+
+  if (body.linkedinStatus !== undefined) {
+    if (
+      typeof body.linkedinStatus !== "string" ||
+      !(VALID_LINKEDIN_STATUSES as readonly string[]).includes(body.linkedinStatus)
+    ) {
+      return {
+        ok: false,
+        error: `\`linkedinStatus\` must be one of: ${VALID_LINKEDIN_STATUSES.join(", ")}.`,
+      };
+    }
+    data.linkedinStatus = body.linkedinStatus as LinkedinStatus;
+  }
+
+  if (body.connectMessage !== undefined) {
+    if (!isNullableString(body.connectMessage)) {
+      return { ok: false, error: "`connectMessage` must be a string or null." };
+    }
+    const trimmed = body.connectMessage?.trim() ?? "";
+    if (trimmed === "") {
+      data.connectMessage = null;
+    } else if (trimmed.length > MAX_CONNECT_MESSAGE_CHARS) {
+      return {
+        ok: false,
+        error: `\`connectMessage\` must be at most ${MAX_CONNECT_MESSAGE_CHARS} characters.`,
+      };
+    } else {
+      data.connectMessage = trimmed;
+    }
   }
 
   return { ok: true, data };

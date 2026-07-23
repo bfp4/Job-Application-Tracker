@@ -4,7 +4,15 @@ import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
 import { CopyField } from "@/components/CopyButton";
 import { inputClassName } from "@/lib/ui";
-import type { Contact } from "@/lib/types";
+import {
+  LINKEDIN_STATUS_ORDER,
+  linkedinStatusBadgeClasses,
+  linkedinStatusLabel,
+} from "@/lib/linkedin";
+import type { Contact, LinkedinStatus } from "@/lib/types";
+
+// LinkedIn's connection-request note limit; mirrored on the server.
+const MAX_CONNECT_MESSAGE_CHARS = 300;
 
 /** The editable contact fields, as they appear in the form inputs. */
 interface ContactFields {
@@ -98,12 +106,48 @@ export default function ContactsSection({
     setContacts((cs) => cs.filter((c) => c.id !== contactId));
   }
 
+  function replaceContact(updated: Contact) {
+    setContacts((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+  }
+
+  async function handleStatusChange(contactId: string, linkedinStatus: LinkedinStatus) {
+    const res = await apiFetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ linkedinStatus }),
+    });
+    replaceContact(await requestJson(res, "Failed to update LinkedIn status."));
+  }
+
+  async function handleSaveMessage(contactId: string, message: string) {
+    const res = await apiFetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ connectMessage: message.trim() === "" ? null : message }),
+    });
+    replaceContact(await requestJson(res, "Failed to save message."));
+  }
+
+  async function handleGenerateMessage(contactId: string) {
+    const res = await apiFetch(`/api/contacts/${contactId}/connect-message`, {
+      method: "POST",
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      contact?: Contact;
+      error?: string;
+    };
+    if (!res.ok || !data.contact) {
+      throw new Error(data.error ?? "Failed to generate a message.");
+    }
+    replaceContact(data.contact);
+  }
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-gray-900">Contacts</h2>
       <p className="mt-1 text-sm text-gray-500">
         People you&apos;re in touch with about this application — recruiters, hiring
-        managers, referrals.
+        managers, referrals. Track your LinkedIn status with each and draft a short
+        connection note to introduce yourself and boost your application&apos;s
+        visibility.
       </p>
 
       {error && (
@@ -120,6 +164,9 @@ export default function ContactsSection({
               contact={contact}
               onSave={handleSave}
               onDelete={handleDelete}
+              onStatusChange={handleStatusChange}
+              onSaveMessage={handleSaveMessage}
+              onGenerateMessage={handleGenerateMessage}
               setError={setError}
             />
           ))}
@@ -135,11 +182,17 @@ function ContactItem({
   contact,
   onSave,
   onDelete,
+  onStatusChange,
+  onSaveMessage,
+  onGenerateMessage,
   setError,
 }: {
   contact: Contact;
   onSave: (contactId: string, fields: ContactFields) => Promise<void>;
   onDelete: (contactId: string) => Promise<void>;
+  onStatusChange: (contactId: string, status: LinkedinStatus) => Promise<void>;
+  onSaveMessage: (contactId: string, message: string) => Promise<void>;
+  onGenerateMessage: (contactId: string) => Promise<void>;
   setError: (error: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -225,7 +278,174 @@ function ContactItem({
           </button>
         </div>
       </div>
+
+      <ContactLinkedinPanel
+        contact={contact}
+        onStatusChange={onStatusChange}
+        onSaveMessage={onSaveMessage}
+        onGenerateMessage={onGenerateMessage}
+        setError={setError}
+      />
     </li>
+  );
+}
+
+/**
+ * "LinkedIn" sub-panel on a contact: where the user stands in the networking
+ * flow (a status dropdown), plus an AI-drafted connection-request note (≤300
+ * chars) built from the posting, resume, application status and notes. The
+ * note textarea mirrors the questions pattern — edit locally, save on blur,
+ * and refresh when an AI draft arrives via props.
+ */
+function ContactLinkedinPanel({
+  contact,
+  onStatusChange,
+  onSaveMessage,
+  onGenerateMessage,
+  setError,
+}: {
+  contact: Contact;
+  onStatusChange: (contactId: string, status: LinkedinStatus) => Promise<void>;
+  onSaveMessage: (contactId: string, message: string) => Promise<void>;
+  onGenerateMessage: (contactId: string) => Promise<void>;
+  setError: (error: string | null) => void;
+}) {
+  const [messageDraft, setMessageDraft] = useState(contact.connectMessage ?? "");
+  const [savedMessage, setSavedMessage] = useState(contact.connectMessage ?? "");
+  const [generating, setGenerating] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  // Sync in an AI-generated message (props changed underneath local state).
+  if ((contact.connectMessage ?? "") !== savedMessage) {
+    setSavedMessage(contact.connectMessage ?? "");
+    setMessageDraft(contact.connectMessage ?? "");
+  }
+
+  async function handleStatusSelect(status: LinkedinStatus) {
+    setError(null);
+    setSavingStatus(true);
+    try {
+      await onStatusChange(contact.id, status);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update LinkedIn status.");
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function handleMessageBlur() {
+    if (messageDraft === savedMessage) return;
+    setError(null);
+    try {
+      await onSaveMessage(contact.id, messageDraft);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save message.");
+    }
+  }
+
+  async function handleGenerateClick() {
+    if (
+      messageDraft.trim() !== "" &&
+      !confirm("Replace the current message with a new AI draft?")
+    ) {
+      return;
+    }
+    setGenerating(true);
+    setError(null);
+    try {
+      await onGenerateMessage(contact.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate a message.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const overLimit = messageDraft.length > MAX_CONNECT_MESSAGE_CHARS;
+
+  return (
+    <div className="mt-4 border-t border-gray-100 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="text-xs font-medium text-gray-700">
+          LinkedIn status
+        </label>
+        <select
+          value={contact.linkedinStatus}
+          disabled={savingStatus}
+          onChange={(e) => handleStatusSelect(e.target.value as LinkedinStatus)}
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset focus:outline-none disabled:opacity-60 ${linkedinStatusBadgeClasses(
+            contact.linkedinStatus
+          )}`}
+          aria-label="LinkedIn status with this contact"
+        >
+          {LINKEDIN_STATUS_ORDER.map((status) => (
+            <option key={status} value={status}>
+              {linkedinStatusLabel(status)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-gray-700">
+            Connection message
+          </label>
+          <span className={`text-xs ${overLimit ? "text-red-600" : "text-gray-400"}`}>
+            {messageDraft.length}/{MAX_CONNECT_MESSAGE_CHARS}
+          </span>
+        </div>
+        <div className="mt-1">
+          <CopyField value={messageDraft} multiline>
+            <textarea
+              value={messageDraft}
+              onChange={(e) => setMessageDraft(e.target.value)}
+              onBlur={handleMessageBlur}
+              rows={messageDraft ? 4 : 2}
+              maxLength={MAX_CONNECT_MESSAGE_CHARS}
+              disabled={generating}
+              className={`w-full bg-white pr-9 ${inputClassName}`}
+              placeholder="A short intro note to send with your LinkedIn connection request — generate one with AI, then tweak it."
+            />
+          </CopyField>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleGenerateClick}
+          disabled={generating}
+          title="Draft a LinkedIn connection note from this posting, your resume, and where the application stands."
+          className={
+            messageDraft.trim() !== ""
+              ? "rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+              : "rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+          }
+        >
+          {generating
+            ? "Generating…"
+            : messageDraft.trim() !== ""
+              ? "Regenerate"
+              : "Generate message"}
+        </button>
+        {contact.linkedinUrl && (
+          <a
+            href={contact.linkedinUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-gray-500 underline hover:text-gray-900"
+          >
+            Open LinkedIn ↗
+          </a>
+        )}
+        {generating && (
+          <span className="text-sm text-gray-500">
+            Reading this posting, your resume, and the application status…
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
