@@ -5,7 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
 import { apiFetch } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/format";
 import { STATUS_ORDER, statusBadgeClasses, statusLabel } from "@/lib/status";
 import { useAuth } from "@/context/AuthContext";
 import type { Application, ApplicationStatus, FollowUpWithApplication } from "@/lib/types";
@@ -141,7 +141,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex shrink-0 items-center gap-3">
                             <StatusBadge status={followUp.application.status} />
-                            <span className="text-sm text-gray-500">{formatDate(followUp.followUpDate)}</span>
+                            <span className="text-sm text-gray-500">{formatCalendarDate(followUp.followUpDate)}</span>
                           </div>
                         </Link>
                       </li>

@@ -10,7 +10,7 @@ import CompanyInput from "@/components/CompanyInput";
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
@@ -164,6 +164,13 @@ export default function ApplicationsPage() {
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error("Update failed.");
+      // The server may auto-stamp appliedDate on the first move to APPLIED.
+      const data = (await res.json()) as { application: Application };
+      setApplications((apps) =>
+        apps.map((a) =>
+          a.id === id ? { ...a, appliedDate: data.application.appliedDate } : a
+        )
+      );
     } catch {
       setApplications(previous);
       setError("Failed to update status. Please try again.");
@@ -423,7 +430,7 @@ export default function ApplicationsPage() {
                               />
                             </td>
                             <td className="truncate px-4 py-3 text-gray-500">
-                              {formatDate(app.appliedDate)}
+                              {formatCalendarDate(app.appliedDate)}
                             </td>
                           </tr>
                         );
@@ -448,7 +455,7 @@ export default function ApplicationsPage() {
                             {app.jobPosting?.title ?? "—"}
                           </p>
                           <p className="mt-1 text-xs text-gray-400">
-                            Applied {formatDate(app.appliedDate)}
+                            Applied {formatCalendarDate(app.appliedDate)}
                           </p>
                         </Link>
                         <div className="mt-3">

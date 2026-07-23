@@ -16,6 +16,9 @@ interface ContactFields {
   notes: string;
 }
 
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLL_ATTEMPTS = 15;
+
 const EMPTY_FIELDS: ContactFields = {
   name: "",
   position: "",
@@ -34,6 +37,19 @@ function toFields(contact: Contact): ContactFields {
     email: contact.email ?? "",
     notes: contact.notes ?? "",
   };
+}
+
+/** Whether the given string is a valid LinkedIn profile URL. */
+function isValidLinkedInUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return /(^|\.)linkedin\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** Request body for create/update: empty inputs become explicit nulls. */
@@ -83,6 +99,40 @@ export default function ContactsSection({
     setContacts((cs) => [...cs, contact]);
   }
 
+  // Polls until the placeholder contact's scrape resolves, then patches it
+  // into state. Gives up after MAX_POLL_ATTEMPTS so a hung/lost job doesn't
+  // poll forever — the row is left as PENDING, which reads as stuck rather
+  // than silently wrong.
+  async function pollForScrapeResult(contactId: string) {
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+
+      const res = await apiFetch(`/api/applications/${applicationId}`);
+      if (!res.ok) continue;
+
+      const data = (await res.json().catch(() => ({}))) as {
+        application?: { contacts?: Contact[] };
+      };
+      const updated = data.application?.contacts?.find((c) => c.id === contactId);
+      if (!updated) return; // contact was deleted while we were polling
+
+      if (updated.scrapedStatus !== "PENDING") {
+        setContacts((cs) => cs.map((c) => (c.id === contactId ? updated : c)));
+        return;
+      }
+    }
+  }
+
+  async function handleScrape(linkedinUrl: string) {
+    const res = await apiFetch(`/api/applications/${applicationId}/scrape-linkedin`, {
+      method: "POST",
+      body: JSON.stringify({ linkedinUrl }),
+    });
+    const contact = await requestJson(res, "Failed to start LinkedIn scrape.");
+    setContacts((cs) => [...cs, contact]);
+    void pollForScrapeResult(contact.id);
+  }
+
   async function handleSave(contactId: string, fields: ContactFields) {
     const res = await apiFetch(`/api/contacts/${contactId}`, {
       method: "PATCH",
@@ -126,7 +176,7 @@ export default function ContactsSection({
         </ul>
       )}
 
-      <AddContactForm onAdd={handleAdd} setError={setError} />
+      <AddContactForm onAdd={handleAdd} onScrape={handleScrape} setError={setError} />
     </div>
   );
 }
@@ -170,6 +220,16 @@ function ContactItem({
             {contact.name}
             {contact.position && (
               <span className="font-normal text-gray-500"> · {contact.position}</span>
+            )}
+            {contact.scrapedStatus === "PENDING" && (
+              <span className="ml-2 text-xs font-normal text-gray-400">
+                Fetching from LinkedIn…
+              </span>
+            )}
+            {contact.scrapedStatus === "FAILED" && (
+              <span className="ml-2 text-xs font-normal text-red-500">
+                Couldn&apos;t fetch that profile — edit the fields manually.
+              </span>
             )}
           </p>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -231,9 +291,11 @@ function ContactItem({
 
 function AddContactForm({
   onAdd,
+  onScrape,
   setError,
 }: {
   onAdd: (fields: ContactFields) => Promise<void>;
+  onScrape: (linkedinUrl: string) => Promise<void>;
   setError: (error: string | null) => void;
 }) {
   // Remounting the form on each added contact resets its fields.
@@ -251,6 +313,10 @@ function AddContactForm({
           await onAdd(fields);
           setFormKey((k) => k + 1);
         }}
+        onScrape={async (linkedinUrl) => {
+          await onScrape(linkedinUrl);
+          setFormKey((k) => k + 1);
+        }}
         setError={setError}
       />
     </div>
@@ -263,6 +329,7 @@ function ContactForm({
   pendingLabel,
   onSubmit,
   onCancel,
+  onScrape,
   setError,
 }: {
   initial: ContactFields;
@@ -270,10 +337,12 @@ function ContactForm({
   pendingLabel: string;
   onSubmit: (fields: ContactFields) => Promise<void>;
   onCancel?: () => void;
+  onScrape?: (linkedinUrl: string) => Promise<void>;
   setError: (error: string | null) => void;
 }) {
   const [fields, setFields] = useState(initial);
   const [submitting, setSubmitting] = useState(false);
+  const [scraping, setScraping] = useState(false);
 
   function setField(field: keyof ContactFields, value: string) {
     setFields((f) => ({ ...f, [field]: value }));
@@ -293,10 +362,22 @@ function ContactForm({
     }
   }
 
+  async function handleScrapeClick() {
+    if (!onScrape) return;
+    setScraping(true);
+    setError(null);
+    try {
+      await onScrape(fields.linkedinUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start LinkedIn scrape.");
+    } finally {
+      setScraping(false);
+    }
+  }
+
   const textInputs: { field: keyof ContactFields; label: string; type?: string; placeholder?: string }[] = [
     { field: "name", label: "Name *", placeholder: "e.g. Dana Smith" },
     { field: "position", label: "Position", placeholder: "e.g. Engineering Manager" },
-    { field: "linkedinUrl", label: "LinkedIn", type: "url", placeholder: "https://www.linkedin.com/in/…" },
     { field: "email", label: "Email", type: "email", placeholder: "dana@company.com" },
     { field: "phone", label: "Phone", type: "tel", placeholder: "+1 555 123 4567" },
   ];
@@ -320,6 +401,34 @@ function ContactForm({
             </div>
           </div>
         ))}
+      </div>
+      <div className="mt-3 flex items-end gap-2">
+        <div className={onScrape ? "w-3/4" : "w-full"}>
+          <label className="block text-xs font-medium text-gray-700">LinkedIn</label>
+          <div className="mt-1">
+            <CopyField value={fields.linkedinUrl}>
+                <input
+                  type="url"
+                  value={fields.linkedinUrl}
+                  onChange={(e) => setField("linkedinUrl", e.target.value)}
+                placeholder="https://www.linkedin.com/in/…"
+                className={`w-full bg-white pr-9 ${inputClassName}`}
+              />
+            </CopyField>
+        </div>
+      </div>
+      {onScrape && (
+        <button
+          type="button"
+          onClick={handleScrapeClick}
+          disabled={
+            submitting || scraping || !isValidLinkedInUrl(fields.linkedinUrl)
+          }
+          className="w-1/4 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        >
+          {scraping ? "Adding…" : "Add from LinkedIn"}
+        </button>
+      )}
       </div>
       <div className="mt-3">
         <label className="block text-xs font-medium text-gray-700">Notes</label>

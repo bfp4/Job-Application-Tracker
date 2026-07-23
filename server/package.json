@@ -24,7 +24,8 @@
     "express": "^4.21.2",
     "firebase-admin": "^14.0.0",
     "multer": "^2.2.0",
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "puppeteer-core": "^25.3.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

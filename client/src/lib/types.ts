@@ -36,6 +36,8 @@ export interface FollowUp {
   completed: boolean;
 }
 
+export type ScrapedStatus = "NOT_SCRAPED" | "PENDING" | "DONE" | "FAILED";
+
 /** A person the user is in contact with about an application. */
 export interface Contact {
   id: string;
@@ -46,6 +48,8 @@ export interface Contact {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  scrapedStatus: ScrapedStatus;
+  scrapedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

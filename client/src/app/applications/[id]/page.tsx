@@ -11,7 +11,7 @@ import ContactsSection from "@/components/ContactsSection";
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch } from "@/lib/api";
-import { formatDate, toDateInputValue } from "@/lib/format";
+import { formatCalendarDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
@@ -383,7 +383,7 @@ function FollowUpsSection({
                   <span
                     className={`block text-sm ${followUp.completed ? "text-gray-400 line-through" : "text-gray-900"}`}
                   >
-                    {formatDate(followUp.followUpDate)}
+                    {formatCalendarDate(followUp.followUpDate)}
                   </span>
                   {followUp.note && (
                     <span className="block truncate text-xs text-gray-500">{followUp.note}</span>

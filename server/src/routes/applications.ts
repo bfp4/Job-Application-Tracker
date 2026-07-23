@@ -8,6 +8,7 @@ import { createInFlightGuard } from "../lib/inFlight";
 import {
   isNonEmptyString,
   isNullableString,
+  isValidHttpUrl,
   parseNullableDate,
 } from "../lib/validation";
 import { parseContactFields } from "../lib/contactInput";
@@ -16,6 +17,7 @@ import {
   generateResumeTips,
   jobPostingFingerprint,
 } from "../services/resumeTips";
+import { scrapeLinkedInProfile } from "../services/linkedProfileScraper";
 
 const router = Router();
 
@@ -134,6 +136,9 @@ router.post(
         userId: req.user!.id,
         jobPostingId,
         ...(status ? { status } : {}),
+        ...(status === ApplicationStatus.APPLIED
+          ? { appliedDate: new Date() }
+          : {}),
         ...(isNonEmptyString(source) ? { source: source.trim() } : {}),
       },
       include: applicationInclude,
@@ -201,6 +206,16 @@ router.patch(
     if (!existing) {
       res.status(404).json({ error: "Application not found." });
       return;
+    }
+
+    // Moving to APPLIED stamps the applied date the first time; an explicit
+    // appliedDate in the same request or one set earlier always wins.
+    if (
+      data.status === ApplicationStatus.APPLIED &&
+      data.appliedDate === undefined &&
+      existing.appliedDate === null
+    ) {
+      data.appliedDate = new Date();
     }
 
     const application = await prisma.application.update({
@@ -432,6 +447,88 @@ router.post(
     const contact = await prisma.contact.create({
       data: { applicationId: application.id, name, ...optionalFields },
     });
+
+    res.status(201).json({ contact });
+  })
+);
+
+// At most one scrape runs at a time (t4g.micro has 1GB RAM — a single
+// headless Chromium instance is the budget). A second request while one is
+// in flight is refused rather than queued, so the caller can just retry.
+const linkedinScrapesInFlight = createInFlightGuard();
+
+/**
+ * POST /api/applications/:id/scrape-linkedin
+ * Creates a new contact for this application from a LinkedIn profile URL.
+ * The contact is created immediately (scrapedStatus PENDING, placeholder
+ * name) so it shows up in the list right away; the scrape itself runs
+ * without blocking the response and updates the same row to DONE (with the
+ * scraped name/position) or FAILED once it resolves.
+ */
+router.post(
+  "/:id/scrape-linkedin",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { linkedinUrl } = req.body ?? {};
+
+    if (!isNonEmptyString(linkedinUrl) || !isValidHttpUrl(linkedinUrl)) {
+      res.status(400).json({ error: "`linkedinUrl` must be a valid http(s) URL." });
+      return;
+    }
+
+    const application = await prisma.application.findFirst({
+      where: { id: req.params.id, userId: req.user!.id },
+    });
+
+    if (!application) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    if (!linkedinScrapesInFlight.tryAcquire("linkedin-scrape")) {
+      res.status(409).json({
+        error: "A LinkedIn scrape is already running. Try again in a moment.",
+      });
+      return;
+    }
+
+    const trimmedUrl = linkedinUrl.trim();
+
+    let contact;
+    try {
+      contact = await prisma.contact.create({
+        data: {
+          applicationId: application.id,
+          name: "New contact",
+          linkedinUrl: trimmedUrl,
+          scrapedStatus: "PENDING",
+        },
+      });
+    } catch (err) {
+      linkedinScrapesInFlight.release("linkedin-scrape");
+      throw err;
+    }
+
+    scrapeLinkedInProfile(trimmedUrl)
+      .then((scraped) =>
+        prisma.contact.update({
+          where: { id: contact!.id },
+          data: {
+            name: scraped.name ?? contact!.name,
+            position: scraped.position,
+            scrapedStatus: "DONE",
+            scrapedAt: new Date(),
+          },
+        })
+      )
+      .catch((err) => {
+        console.error(`LinkedIn scrape failed for contact ${contact!.id}:`, err);
+        return prisma.contact.update({
+          where: { id: contact!.id },
+          data: { scrapedStatus: "FAILED" },
+        });
+      })
+      .finally(() => linkedinScrapesInFlight.release("linkedin-scrape"));
 
     res.status(201).json({ contact });
   })

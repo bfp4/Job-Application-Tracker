@@ -93,6 +93,13 @@ model Application {
   @@index([status])
 }
 
+enum ScrapedStatus {
+  NOT_SCRAPED
+  PENDING
+  DONE
+  FAILED
+}
+
 // A person the user is in contact with about this application
 // (recruiter, hiring manager, referral, ...).
 model Contact {
@@ -107,6 +114,8 @@ model Contact {
   notes         String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  scrapedStatus ScrapedStatus @default(NOT_SCRAPED)
+  scrapedAt     DateTime? 
 
   @@index([applicationId])
 }
