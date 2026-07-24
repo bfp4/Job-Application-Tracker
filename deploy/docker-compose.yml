@@ -6,6 +6,11 @@ services:
   api:
     image: ${ECR_IMAGE}
     env_file: /opt/app/.env
+    # Non-secret runtime flag: enforce Firebase App Check on /api requests.
+    # Set here (not in SSM) so it's version-controlled; `environment` overrides
+    # env_file, and this key isn't in /opt/app/.env so there's no conflict.
+    environment:
+      - APP_CHECK_ENFORCED=true
     restart: unless-stopped
     expose:
       - "5000"
