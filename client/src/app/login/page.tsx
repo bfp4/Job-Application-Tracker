@@ -4,25 +4,57 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { friendlyAuthError } from "@/lib/authErrors";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, signOut, resendVerification } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendNote, setResendNote] = useState<string | null>(null);
 
   async function handleEmailLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setNeedsVerification(false);
+    setResendNote(null);
     setSubmitting(true);
     try {
-      await signIn(email, password);
+      const { user } = await signIn(email, password);
+      if (!user.emailVerified) {
+        // Send a fresh link while we still have the authenticated user, then
+        // sign back out so no unverified session lingers.
+        try {
+          await resendVerification(user);
+        } catch {
+          /* non-fatal: they can retry from the notice below */
+        }
+        await signOut();
+        setNeedsVerification(true);
+        return;
+      }
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign in.");
+      setError(friendlyAuthError(err, "Failed to sign in."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    setResendNote(null);
+    setSubmitting(true);
+    try {
+      const { user } = await signIn(email, password);
+      await resendVerification(user);
+      await signOut();
+      setResendNote("Verification email sent. Check your inbox.");
+    } catch (err) {
+      setError(friendlyAuthError(err, "Couldn't resend the email."));
     } finally {
       setSubmitting(false);
     }
@@ -35,7 +67,7 @@ export default function LoginPage() {
       await signInWithGoogle();
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign in with Google.");
+      setError(friendlyAuthError(err, "Failed to sign in with Google."));
     } finally {
       setSubmitting(false);
     }
@@ -49,6 +81,21 @@ export default function LoginPage() {
 
         {error && (
           <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        )}
+
+        {needsVerification && (
+          <div className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+            <p>Please confirm your email before signing in — we just sent you a new link.</p>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={submitting}
+              className="mt-2 font-medium underline disabled:opacity-50"
+            >
+              Resend verification email
+            </button>
+            {resendNote && <p className="mt-2 text-green-700">{resendNote}</p>}
+          </div>
         )}
 
         <form onSubmit={handleEmailLogin} className="mt-6 space-y-4">

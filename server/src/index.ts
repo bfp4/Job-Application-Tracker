@@ -1,7 +1,9 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { errorHandler } from "./lib/http";
+import { verifyAppCheck } from "./middleware/appCheck";
 import resumesRouter from "./routes/resumes";
 import applicationsRouter from "./routes/applications";
 import followUpsRouter from "./routes/followUps";
@@ -22,9 +24,23 @@ app.use(
 );
 app.use(express.json());
 
+// Throttle abusive traffic (bot mass-signup / brute force). Keyed per IP.
+// Behind a proxy (Caddy), trust it so the client IP — not the proxy — is used.
+app.set("trust proxy", 1);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // per-IP requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please slow down." },
+});
+
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
+
+// App Check attestation + rate limiting guard the API surface (health stays open).
+app.use("/api", verifyAppCheck, apiLimiter);
 
 app.use("/api/resumes", resumesRouter);
 app.use("/api/applications", applicationsRouter);

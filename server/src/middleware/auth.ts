@@ -45,6 +45,17 @@ export async function authenticate(
     const firebaseUid = decoded.uid;
     const email = decoded.email ?? null;
 
+    // Require a confirmed email before granting access. Google (and other
+    // trusted providers) set email_verified: true, so those sign-ins pass;
+    // password sign-ups must click the verification link first.
+    if (decoded.email_verified !== true) {
+      res.status(403).json({
+        error: "Please confirm your email address before continuing.",
+        code: "EMAIL_NOT_VERIFIED",
+      });
+      return;
+    }
+
     let user = await prisma.user.findUnique({ where: { firebaseUid } });
 
     if (!user) {
@@ -55,11 +66,21 @@ export async function authenticate(
         return;
       }
 
-      user = await prisma.user.upsert({
-        where: { email },
-        update: { firebaseUid },
-        create: { firebaseUid, email },
-      });
+      // Fail closed rather than silently rebinding an existing account to a
+      // new Firebase UID: if a row already owns this email under a different
+      // UID, refuse instead of overwriting it.
+      const existingByEmail = await prisma.user.findUnique({ where: { email } });
+      if (existingByEmail && existingByEmail.firebaseUid !== firebaseUid) {
+        res.status(409).json({
+          error: "This email is already associated with another account.",
+          code: "EMAIL_ALREADY_LINKED",
+        });
+        return;
+      }
+
+      user =
+        existingByEmail ??
+        (await prisma.user.create({ data: { firebaseUid, email } }));
     }
 
     req.user = user;

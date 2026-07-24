@@ -4,6 +4,11 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import {
+  PASSWORD_RULES,
+  validatePassword,
+  friendlyAuthError,
+} from "@/lib/authErrors";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -13,16 +18,24 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function handleEmailSignUp(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+
     setSubmitting(true);
     try {
       await signUp(email, password);
-      router.push("/dashboard");
+      setSentTo(email);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign up.");
+      setError(friendlyAuthError(err, "Failed to sign up."));
     } finally {
       setSubmitting(false);
     }
@@ -35,10 +48,35 @@ export default function SignUpPage() {
       await signInWithGoogle();
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign up with Google.");
+      setError(friendlyAuthError(err, "Failed to sign up with Google."));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (sentTo) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+        <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-semibold text-gray-900">Confirm your email</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            We sent a verification link to{" "}
+            <span className="font-medium text-gray-900">{sentTo}</span>. Click it to
+            activate your account, then log in.
+          </p>
+          <Link
+            href="/login"
+            className="mt-6 block w-full rounded-md bg-gray-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-800"
+          >
+            Go to login
+          </Link>
+          <p className="mt-4 text-center text-xs text-gray-500">
+            Didn&apos;t get it? Check your spam folder, or you can resend the link
+            from the login page.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -74,11 +112,26 @@ export default function SignUpPage() {
               id="password"
               type="password"
               required
-              minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
             />
+            <ul className="mt-2 space-y-1">
+              {PASSWORD_RULES.map((rule) => {
+                const met = rule.test(password);
+                return (
+                  <li
+                    key={rule.label}
+                    className={`flex items-center gap-1.5 text-xs ${
+                      met ? "text-green-600" : "text-gray-400"
+                    }`}
+                  >
+                    <span aria-hidden>{met ? "✓" : "○"}</span>
+                    {rule.label}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
           <button

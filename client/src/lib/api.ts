@@ -1,4 +1,4 @@
-import { auth } from "@/lib/firebase";
+import { auth, getAppCheckToken } from "@/lib/firebase";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 
@@ -11,10 +11,14 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
  */
 export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+  const appCheckToken = await getAppCheckToken();
 
   const headers = new Headers(options.headers);
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (appCheckToken) {
+    headers.set("X-Firebase-AppCheck", appCheckToken);
   }
   if (
     options.body !== undefined &&
