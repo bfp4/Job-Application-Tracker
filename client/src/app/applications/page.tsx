@@ -250,7 +250,7 @@ export default function ApplicationsPage() {
                 </button>
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Paste an AshbyHQ job link and we&apos;ll fill in the details for you.
+                Paste an AshbyHQ or Greenhouse job link and we&apos;ll fill in the details for you.
               </p>
               {autofillNote && <p className="mt-1 text-xs text-green-700">{autofillNote}</p>}
             </div>

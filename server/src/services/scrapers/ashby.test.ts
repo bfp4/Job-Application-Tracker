@@ -125,7 +125,7 @@ describe("scrapeJobPosting (Ashby)", () => {
 
   it("rejects a URL from an unsupported host", async () => {
     await expect(
-      scrapeJobPosting("https://boards.greenhouse.io/acme/jobs/123")
+      scrapeJobPosting("https://jobs.lever.co/acme/some-role")
     ).rejects.toMatchObject({ code: "UNSUPPORTED_URL" });
   });
 

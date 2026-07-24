@@ -1,15 +1,16 @@
 import { ashbyScraper } from "./ashby";
+import { greenhouseScraper } from "./greenhouse";
 import { NormalizedPosting, Scraper, ScrapeError } from "./types";
 
 export { ScrapeError } from "./types";
 export type { NormalizedPosting } from "./types";
 
 /**
- * Registered board providers, tried in order. Adding a new board (Greenhouse,
- * Lever, an AI/HTML fallback) is a matter of appending a {@link Scraper} here —
- * the route and the client contract don't change.
+ * Registered board providers, tried in order. Adding a new board (Lever, an
+ * AI/HTML fallback) is a matter of appending a {@link Scraper} here — the route
+ * and the client contract don't change.
  */
-const scrapers: Scraper[] = [ashbyScraper];
+const scrapers: Scraper[] = [ashbyScraper, greenhouseScraper];
 
 export interface ScrapeResult {
   /** Which provider handled the URL, e.g. "ashby". */
@@ -38,7 +39,7 @@ export async function scrapeJobPosting(rawUrl: string): Promise<ScrapeResult> {
   if (!scraper) {
     throw new ScrapeError(
       "UNSUPPORTED_URL",
-      "Only AshbyHQ job URLs are supported right now."
+      "Only AshbyHQ and Greenhouse job URLs are supported right now."
     );
   }
 
