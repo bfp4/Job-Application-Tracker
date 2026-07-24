@@ -12,10 +12,10 @@ import {
 } from "../lib/validation";
 import { parseContactFields } from "../lib/contactInput";
 import { getObjectText } from "../lib/s3";
-import {
-  generateResumeTips,
-  jobPostingFingerprint,
-} from "../services/resumeTips";
+import { jobPostingFingerprint } from "../lib/prompt";
+import { generateResumeTips } from "../services/resumeTips";
+import { generateTailoredResume } from "../services/tailoredResume";
+import { renderTailoredResumePdf } from "../lib/resumeRender";
 
 const router = Router();
 
@@ -364,6 +364,246 @@ router.post(
     }
   })
 );
+
+/**
+ * Loads everything the tailored-resume endpoints need: the application (with
+ * posting + company), the saved tailored resume if any, the user's latest
+ * resume, and whether the saved draft is still current for that resume +
+ * posting. Mirrors loadResumeTipsContext but for the separate draft table.
+ */
+async function loadTailoredResumeContext(userId: string, applicationId: string) {
+  const [application, baseResume] = await Promise.all([
+    prisma.application.findFirst({
+      where: { id: applicationId, userId },
+      include: {
+        jobPosting: { include: { company: true } },
+        tailoredResume: true,
+      },
+    }),
+    getLatestBaseResume(userId),
+  ]);
+
+  if (!application) return null;
+
+  const currentHash = jobPostingFingerprint(application.jobPosting);
+  const tailored = application.tailoredResume;
+  const upToDate = Boolean(
+    tailored &&
+      baseResume &&
+      tailored.baseResumeId === baseResume.id &&
+      tailored.jobPostingHash === currentHash
+  );
+
+  return { application, tailored, baseResume, currentHash, upToDate };
+}
+
+// Applications with a tailored-resume generation running. Separate from the
+// tips guard so the two features never block each other.
+const tailoredGenerationsInFlight = createInFlightGuard();
+
+/**
+ * GET /api/applications/:id/tailored-resume
+ * Returns the saved tailored resume (if any) plus whether it's still current.
+ */
+router.get(
+  "/:id/tailored-resume",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ctx = await loadTailoredResumeContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    res.json({
+      tailored: ctx.tailored ?? null,
+      upToDate: ctx.upToDate,
+      hasResume: Boolean(ctx.baseResume),
+    });
+  })
+);
+
+/**
+ * POST /api/applications/:id/tailored-resume
+ * Generates (or regenerates) the tailored resume. Refused with 409 while the
+ * saved draft is still current, or — because a regenerate overwrites the draft
+ * — while the user has hand-edited it and hasn't passed `force`.
+ */
+router.post(
+  "/:id/tailored-resume",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ctx = await loadTailoredResumeContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    if (!ctx.baseResume) {
+      res.status(400).json({
+        error: "Upload a resume in Settings before generating a tailored resume.",
+      });
+      return;
+    }
+
+    const force = req.query.force === "1" || req.body?.force === true;
+
+    // Protect hand-edits: a regenerate replaces the whole draft, so require an
+    // explicit confirmation once the user has edited it.
+    if (ctx.tailored?.edited && !force) {
+      res.status(409).json({
+        error:
+          "You've edited this resume. Regenerating will replace your edits.",
+        tailored: ctx.tailored,
+        upToDate: ctx.upToDate,
+        needsForce: true,
+      });
+      return;
+    }
+
+    if (ctx.upToDate && !force) {
+      res.status(409).json({
+        error:
+          "This tailored resume is already up to date. Update your resume or the job posting to generate a new one.",
+        tailored: ctx.tailored,
+        upToDate: true,
+      });
+      return;
+    }
+
+    if (!tailoredGenerationsInFlight.tryAcquire(ctx.application.id)) {
+      res.status(409).json({
+        error:
+          "A tailored resume is already being generated for this application.",
+        tailored: ctx.tailored ?? null,
+        upToDate: false,
+      });
+      return;
+    }
+
+    try {
+      const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
+      const content = await generateTailoredResume(
+        resumeMarkdown,
+        ctx.application.jobPosting,
+        req.user!.resumeSpecialization
+      );
+
+      const tailored = await prisma.tailoredResume.upsert({
+        where: { applicationId: ctx.application.id },
+        update: {
+          baseResumeId: ctx.baseResume.id,
+          jobPostingHash: ctx.currentHash,
+          content: content as unknown as Prisma.InputJsonValue,
+          edited: false,
+        },
+        create: {
+          applicationId: ctx.application.id,
+          baseResumeId: ctx.baseResume.id,
+          jobPostingHash: ctx.currentHash,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      res.status(201).json({ tailored, upToDate: true, hasResume: true });
+    } finally {
+      tailoredGenerationsInFlight.release(ctx.application.id);
+    }
+  })
+);
+
+/**
+ * PATCH /api/applications/:id/tailored-resume
+ * Saves the user's hand-edits to the draft's content. Marks it `edited` so a
+ * later regenerate warns before overwriting.
+ */
+router.patch(
+  "/:id/tailored-resume",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const content = req.body?.content;
+    if (content === null || typeof content !== "object" || Array.isArray(content)) {
+      res.status(400).json({ error: "`content` must be an object." });
+      return;
+    }
+
+    const ctx = await loadTailoredResumeContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+    if (!ctx.tailored) {
+      res.status(404).json({ error: "No tailored resume to edit yet." });
+      return;
+    }
+
+    const tailored = await prisma.tailoredResume.update({
+      where: { applicationId: ctx.application.id },
+      data: {
+        content: content as Prisma.InputJsonValue,
+        edited: true,
+      },
+    });
+
+    res.json({ tailored, upToDate: ctx.upToDate, hasResume: Boolean(ctx.baseResume) });
+  })
+);
+
+/**
+ * GET /api/applications/:id/tailored-resume/download?format=pdf
+ * Renders the current (possibly edited) draft to a document and streams it.
+ * Rendering on demand means an edit is always reflected without a stored file
+ * going stale. Only PDF is supported for now.
+ */
+router.get(
+  "/:id/tailored-resume/download",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const format = (req.query.format as string) ?? "pdf";
+    if (format !== "pdf") {
+      res.status(400).json({ error: "Only `format=pdf` is supported." });
+      return;
+    }
+
+    const ctx = await loadTailoredResumeContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+    if (!ctx.tailored) {
+      res.status(404).json({ error: "No tailored resume to download yet." });
+      return;
+    }
+
+    const content = ctx.tailored.content as unknown as Parameters<
+      typeof renderTailoredResumePdf
+    >[0];
+    const pdf = await renderTailoredResumePdf(content);
+
+    const filename = tailoredResumeFilename(ctx.application.jobPosting, content);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    res.send(pdf);
+  })
+);
+
+/**
+ * A safe download filename like "Ada-Lovelace-Acme-Resume.pdf", falling back to
+ * the posting title when the resume has no usable name.
+ */
+function tailoredResumeFilename(
+  posting: { title: string; company: { name: string } | null },
+  content: { header?: { name?: string } }
+): string {
+  const parts = [content.header?.name, posting.company?.name ?? posting.title, "Resume"]
+    .filter((p): p is string => Boolean(p && p.trim()))
+    .map((p) => p.trim().replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
+  const base = parts.filter(Boolean).join("-") || "Tailored-Resume";
+  return `${base}.pdf`;
+}
 
 /**
  * POST /api/applications/:id/questions

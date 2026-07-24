@@ -34,3 +34,29 @@ export function makeBaseResume(overrides: Partial<BaseResume> = {}): BaseResume 
     ...overrides,
   };
 }
+
+/** A valid TailoredResumeContent shape (structurally, not typed here to keep
+ *  fixtures free of a service import) — override what the test cares about. */
+export function makeTailoredContent(overrides: Record<string, unknown> = {}) {
+  return {
+    header: { name: "Ada Lovelace", contact: ["ada@example.com", "London, UK"] },
+    summary: "Engineer retargeted for the role.",
+    sections: [
+      {
+        title: "Experience",
+        entries: [
+          {
+            heading: "Senior Engineer @ Acme · 2020–2024",
+            bullets: [{ before: "Built stuff", after: "Built distributed systems" }],
+          },
+        ],
+      },
+      {
+        title: "Skills",
+        entries: [{ heading: null, bullets: [{ before: null, after: "TypeScript, Node.js" }] }],
+      },
+    ],
+    changeNote: "Emphasized distributed systems.",
+    ...overrides,
+  };
+}

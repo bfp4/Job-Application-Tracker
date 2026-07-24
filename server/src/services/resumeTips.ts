@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { generateStructured } from "../lib/anthropic";
 import {
   MAX_RESUME_CHARS,
@@ -6,6 +5,11 @@ import {
   truncate,
   type PostingWithCompany,
 } from "../lib/prompt";
+
+// jobPostingFingerprint now lives in lib/prompt so the tailored-resume service
+// can share it without depending on this module. Re-exported here because
+// callers (and tests) still import it from the resume-tips service.
+export { jobPostingFingerprint } from "../lib/prompt";
 
 /**
  * Structured tips the agent produces for one (resume, job posting) pair.
@@ -104,26 +108,6 @@ const RESUME_TIPS_SCHEMA = {
   ],
   additionalProperties: false,
 };
-
-/**
- * Hash of every posting field the analysis actually reads. If none of these
- * changed, a re-run would see identical input — which is what "the job
- * listing has changed" is measured against.
- */
-export function jobPostingFingerprint(posting: PostingWithCompany): string {
-  return createHash("sha256")
-    .update(
-      JSON.stringify([
-        posting.title,
-        posting.company?.name ?? null,
-        posting.location,
-        posting.salary,
-        posting.description,
-        posting.jobUrl,
-      ])
-    )
-    .digest("hex");
-}
 
 /**
  * Runs the resume-coach agent: reads the resume markdown and the posting,

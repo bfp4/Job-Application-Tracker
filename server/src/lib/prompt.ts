@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import type { Company, JobPosting } from "@prisma/client";
 
 /** A posting joined with its company, the shape every AI prompt reads. */
@@ -35,4 +36,25 @@ export function formatPostingForPrompt(
     `Description:\n${truncate(posting.description ?? "No description provided.", MAX_DESCRIPTION_CHARS)}`
   );
   return lines.join("\n");
+}
+
+/**
+ * Hash of every posting field an AI analysis actually reads. If none of these
+ * changed, a re-run would see identical input — which is what "the job listing
+ * has changed" is measured against. Shared by the resume-tips and
+ * tailored-resume services so both agree on staleness.
+ */
+export function jobPostingFingerprint(posting: PostingWithCompany): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        posting.title,
+        posting.company?.name ?? null,
+        posting.location,
+        posting.salary,
+        posting.description,
+        posting.jobUrl,
+      ])
+    )
+    .digest("hex");
 }

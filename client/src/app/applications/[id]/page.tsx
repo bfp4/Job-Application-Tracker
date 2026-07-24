@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
+import TailoredResumeSection from "@/components/TailoredResumeSection";
 import QuestionsSection from "@/components/QuestionsSection";
 import ContactsSection from "@/components/ContactsSection";
 import { CopyField } from "@/components/CopyButton";
@@ -292,6 +293,8 @@ export default function ApplicationDetailPage() {
             </div>
 
             <ResumeTipsSection applicationId={id} />
+
+            <TailoredResumeSection applicationId={id} />
 
             <QuestionsSection
               applicationId={id}

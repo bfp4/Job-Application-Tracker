@@ -8,6 +8,7 @@ import followUpsRouter from "./routes/followUps";
 import questionsRouter from "./routes/questions";
 import contactsRouter from "./routes/contacts";
 import jobsRouter from "./routes/jobs";
+import userRouter from "./routes/user";
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use("/api/follow-ups", followUpsRouter);
 app.use("/api/questions", questionsRouter);
 app.use("/api/contacts", contactsRouter);
 app.use("/api/jobs", jobsRouter);
+app.use("/api/user", userRouter);
 
 // Central error middleware — asyncHandler routes rejected promises here.
 app.use(errorHandler);
