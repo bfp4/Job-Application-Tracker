@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { ResumeAnalysis, ResumeTipsContent } from "@/lib/types";
@@ -23,6 +24,7 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const card = useCollapsible("resume-tips");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,6 +48,9 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
   async function handleGenerate() {
     setGenerating(true);
     setError(null);
+    // The button lives in the header, so it can be pressed while collapsed —
+    // open up so progress and results are visible.
+    card.setOpen(true);
     try {
       const res = await apiFetch(`/api/applications/${applicationId}/resume-tips`, {
         method: "POST",
@@ -81,16 +86,13 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
   const content = analysis?.content ?? null;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Resume tips</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            AI analysis of your resume against this posting — what to study, what&apos;s
-            missing, and what to highlight.
-          </p>
-        </div>
-        {data?.hasResume && (
+    <CollapsibleCard
+      storageKey="resume-tips"
+      state={card}
+      title="Resume tips"
+      meta={summarizeState(loading, generating, data)}
+      actions={
+        data?.hasResume && (
           <button
             type="button"
             onClick={handleGenerate}
@@ -104,8 +106,13 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
           >
             {generating ? "Analyzing…" : analysis ? "Regenerate tips" : "Get resume tips"}
           </button>
-        )}
-      </div>
+        )
+      }
+    >
+      <p className="text-sm text-gray-500">
+        AI analysis of your resume against this posting — what to study, what&apos;s
+        missing, and what to highlight.
+      </p>
 
       {error && <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
@@ -188,8 +195,21 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
           )}
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   );
+}
+
+/** One-line status for the card header, readable while the card is collapsed. */
+function summarizeState(
+  loading: boolean,
+  generating: boolean,
+  data: TipsResponse | null
+): string | undefined {
+  if (generating) return "Analyzing…";
+  if (loading || !data) return undefined;
+  if (!data.hasResume) return "No resume uploaded";
+  if (!data.analysis) return "Not generated yet";
+  return data.upToDate ? "Up to date" : "Posting or resume changed";
 }
 
 function TipGroup({ title, children }: { title: string; children: React.ReactNode }) {

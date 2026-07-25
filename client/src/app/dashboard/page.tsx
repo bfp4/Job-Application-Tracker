@@ -82,7 +82,7 @@ export default function DashboardPage() {
           <>
             <div className="flex flex-wrap gap-3">
               <Link
-                href="/applications"
+                href="/applications?add=1"
                 className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
               >
                 Add a job

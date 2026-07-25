@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
+import CollapsibleCard from "@/components/CollapsibleCard";
 import { CopyField } from "@/components/CopyButton";
 import { inputClassName } from "@/lib/ui";
 import {
@@ -141,9 +142,16 @@ export default function ContactsSection({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-900">Contacts</h2>
-      <p className="mt-1 text-sm text-gray-500">
+    <CollapsibleCard
+      storageKey="contacts"
+      title="Contacts"
+      meta={
+        contacts.length === 0
+          ? "None yet"
+          : `${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}`
+      }
+    >
+      <p className="text-sm text-gray-500">
         People you&apos;re in touch with about this application — recruiters, hiring
         managers, referrals. Track your LinkedIn status with each and draft a short
         connection note to introduce yourself and boost your application&apos;s
@@ -174,7 +182,7 @@ export default function ContactsSection({
       )}
 
       <AddContactForm onAdd={handleAdd} setError={setError} />
-    </div>
+    </CollapsibleCard>
   );
 }
 

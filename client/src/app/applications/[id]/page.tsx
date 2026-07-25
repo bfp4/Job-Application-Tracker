@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import CollapsibleCard from "@/components/CollapsibleCard";
 import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
 import TailoredResumeSection from "@/components/TailoredResumeSection";
@@ -202,41 +203,34 @@ export default function ApplicationDetailPage() {
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (
           <>
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-gray-900">
-                    {application.jobPosting?.title ?? "—"}
-                  </h1>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {application.jobPosting?.company?.name ?? "—"}
-                    {application.jobPosting?.location?.length
-                      ? ` · ${application.jobPosting.location.join(", ")}`
-                      : ""}
-                  </p>
-                  {application.jobPosting?.salary && (
-                    <p className="mt-1 text-sm text-gray-600">{application.jobPosting.salary}</p>
-                  )}
-                  {application.jobPosting?.description && (
-                    <p className="mt-3 whitespace-pre-line text-sm text-gray-600">
-                      {application.jobPosting.description}
-                    </p>
-                  )}
-                  {application.jobPosting?.jobUrl && (
-                    <a
-                      href={application.jobPosting.jobUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 inline-block text-sm text-gray-900 underline"
-                    >
-                      View posting
-                    </a>
-                  )}
-                </div>
-                <StatusBadge status={application.status} />
+            <CollapsibleCard
+              storageKey="application-details"
+              title={application.jobPosting?.title ?? "—"}
+              titleClassName="text-xl font-semibold text-gray-900"
+              meta={[
+                application.jobPosting?.company?.name,
+                application.jobPosting?.location?.join(", "),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              actions={<StatusBadge status={application.status} />}
+            >
+              {/* Company and location live in the header, visible either way. */}
+              <div className="text-sm text-gray-600">
+                {application.jobPosting?.salary && <p>{application.jobPosting.salary}</p>}
+                {application.jobPosting?.jobUrl && (
+                  <a
+                    href={application.jobPosting.jobUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block text-gray-900 underline"
+                  >
+                    View posting
+                  </a>
+                )}
               </div>
 
-              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Status</label>
                   <select
@@ -290,7 +284,20 @@ export default function ApplicationDetailPage() {
                   </CopyField>
                 </div>
               </div>
-            </div>
+            </CollapsibleCard>
+
+            {application.jobPosting?.description && (
+              <CollapsibleCard
+                storageKey="job-description"
+                defaultOpen={false}
+                title="Job description"
+                meta="From the posting"
+              >
+                <p className="whitespace-pre-line text-sm text-gray-600">
+                  {application.jobPosting.description}
+                </p>
+              </CollapsibleCard>
+            )}
 
             <ResumeTipsSection applicationId={id} />
 
@@ -315,9 +322,14 @@ export default function ApplicationDetailPage() {
               onDelete={handleDeleteFollowUp}
             />
 
-            <div className="rounded-xl border border-red-200 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-red-700">Danger zone</h2>
-              <p className="mt-1 text-sm text-gray-500">Permanently delete this application.</p>
+            <CollapsibleCard
+              storageKey="danger-zone"
+              defaultOpen={false}
+              className="border-red-200"
+              titleClassName="text-sm font-semibold text-red-700"
+              title="Danger zone"
+            >
+              <p className="text-sm text-gray-500">Permanently delete this application.</p>
               <button
                 type="button"
                 onClick={handleDelete}
@@ -325,7 +337,7 @@ export default function ApplicationDetailPage() {
               >
                 Delete application
               </button>
-            </div>
+            </CollapsibleCard>
           </>
         )}
       </div>
@@ -365,14 +377,22 @@ function FollowUpsSection({
     }
   }
 
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-900">Follow-ups</h2>
+  const pending = followUps.filter((followUp) => !followUp.completed).length;
 
+  return (
+    <CollapsibleCard
+      storageKey="follow-ups"
+      title="Follow-ups"
+      meta={
+        followUps.length === 0
+          ? "None yet"
+          : `${pending} of ${followUps.length} outstanding`
+      }
+    >
       {followUps.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-500">No follow-ups yet.</p>
+        <p className="text-sm text-gray-500">No follow-ups yet.</p>
       ) : (
-        <ul className="mt-3 divide-y divide-gray-100">
+        <ul className="divide-y divide-gray-100">
           {followUps.map((followUp) => (
             <li key={followUp.id} className="flex items-center justify-between gap-3 py-3">
               <label className="flex min-w-0 items-center gap-3">
@@ -440,6 +460,6 @@ function FollowUpsSection({
           {submitting ? "Adding…" : "Add"}
         </button>
       </form>
-    </div>
+    </CollapsibleCard>
   );
 }

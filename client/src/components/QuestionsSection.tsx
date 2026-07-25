@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
+import CollapsibleCard from "@/components/CollapsibleCard";
 import { CopyField } from "@/components/CopyButton";
 import { inputClassName } from "@/lib/ui";
 import type { ApplicationQuestion } from "@/lib/types";
@@ -77,10 +78,19 @@ export default function QuestionsSection({
     setQuestions((qs) => qs.filter((q) => q.id !== questionId));
   }
 
+  const answered = questions.filter((q) => (q.answer ?? "").trim() !== "").length;
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-900">Application questions</h2>
-      <p className="mt-1 text-sm text-gray-500">
+    <CollapsibleCard
+      storageKey="questions"
+      title="Application questions"
+      meta={
+        questions.length === 0
+          ? "None yet"
+          : `${answered} of ${questions.length} answered`
+      }
+    >
+      <p className="text-sm text-gray-500">
         Paste questions from the application form. Let AI draft an answer from your
         resume, this posting, and your notes — or write your own rough draft and have
         AI refine it while keeping your ideas and voice.
@@ -108,7 +118,7 @@ export default function QuestionsSection({
       )}
 
       <AddQuestionForm onAdd={handleAdd} setError={setError} />
-    </div>
+    </CollapsibleCard>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { TailoredResume, TailoredResumeContent } from "@/lib/types";
@@ -25,6 +26,7 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TailoredResumeContent | null>(null);
+  const card = useCollapsible("tailored-resume");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +61,9 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
 
     setGenerating(true);
     setError(null);
+    // The button lives in the header, so it can be pressed while collapsed —
+    // open up so progress and the result are visible.
+    card.setOpen(true);
     try {
       const res = await apiFetch(
         `/api/applications/${applicationId}/tailored-resume${force ? "?force=1" : ""}`,
@@ -144,21 +149,14 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
   const editing = draft !== null;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Tailored resume</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Your resume rewritten for this posting — same facts, retargeted wording
-            and ordering. Specialized for your field (set in{" "}
-            <Link href="/settings" className="font-medium text-gray-900 underline">
-              Settings
-            </Link>
-            ) and capped at one page. Review, tweak, and download.
-          </p>
-        </div>
-        {data?.hasResume && (
-          <div className="flex shrink-0 flex-wrap gap-2">
+    <CollapsibleCard
+      storageKey="tailored-resume"
+      state={card}
+      title="Tailored resume"
+      meta={summarizeState(loading, generating, data)}
+      actions={
+        data?.hasResume && (
+          <>
             {tailored && !editing && (
               <button
                 type="button"
@@ -182,9 +180,18 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
             >
               {generating ? "Building…" : tailored ? "Regenerate" : "Build tailored resume"}
             </button>
-          </div>
-        )}
-      </div>
+          </>
+        )
+      }
+    >
+      <p className="text-sm text-gray-500">
+        Your resume rewritten for this posting — same facts, retargeted wording and
+        ordering. Specialized for your field (set in{" "}
+        <Link href="/settings" className="font-medium text-gray-900 underline">
+          Settings
+        </Link>
+        ) and capped at one page. Review, tweak, and download.
+      </p>
 
       {error && <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
@@ -320,8 +327,22 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
           )}
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   );
+}
+
+/** One-line status for the card header, readable while the card is collapsed. */
+function summarizeState(
+  loading: boolean,
+  generating: boolean,
+  data: TailoredResponse | null
+): string | undefined {
+  if (generating) return "Building…";
+  if (loading || !data) return undefined;
+  if (!data.hasResume) return "No resume uploaded";
+  if (!data.tailored) return "Not built yet";
+  if (data.tailored.edited) return "Edited by you";
+  return data.upToDate ? "Up to date" : "Posting or resume changed";
 }
 
 /** Parses the download filename out of the Content-Disposition header. */
