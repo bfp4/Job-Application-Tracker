@@ -10,9 +10,10 @@ import ResumeTipsSection from "@/components/ResumeTipsSection";
 import TailoredResumeSection from "@/components/TailoredResumeSection";
 import QuestionsSection from "@/components/QuestionsSection";
 import ContactsSection from "@/components/ContactsSection";
+import JobPostingForm, { type JobPostingEdits } from "@/components/JobPostingForm";
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { inputClassName } from "@/lib/ui";
@@ -23,6 +24,7 @@ import type {
   ApplicationStatus,
   Contact,
   FollowUp,
+  JobPosting,
 } from "@/lib/types";
 
 export default function ApplicationDetailPage() {
@@ -37,6 +39,7 @@ export default function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [sourceDraft, setSourceDraft] = useState("");
+  const [editingPosting, setEditingPosting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,24 @@ export default function ApplicationDetailPage() {
     if (!res.ok) throw new Error("Update failed.");
     const data = (await res.json()) as { application: Application };
     setApplication(data.application);
+  }
+
+  /**
+   * Saves edits to the posting itself. These fields live on the JobPosting, not
+   * the Application, so they go through the jobs API and the response is merged
+   * back into the loaded application. Errors propagate to the form, which shows
+   * the server's message (e.g. a URL already tracked) and stays open.
+   */
+  async function handleSavePosting(edits: JobPostingEdits) {
+    const postingId = application?.jobPosting?.id;
+    if (!postingId) return;
+
+    const { jobPosting } = await apiJson<{ jobPosting: JobPosting }>(
+      `/api/jobs/${postingId}`,
+      { method: "PATCH", body: JSON.stringify(edits) }
+    );
+    setApplication((prev) => (prev ? { ...prev, jobPosting } : prev));
+    setEditingPosting(false);
   }
 
   async function handleStatusChange(status: ApplicationStatus) {
@@ -215,20 +236,43 @@ export default function ApplicationDetailPage() {
                 .join(" · ")}
               actions={<StatusBadge status={application.status} />}
             >
-              {/* Company and location live in the header, visible either way. */}
-              <div className="text-sm text-gray-600">
-                {application.jobPosting?.salary && <p>{application.jobPosting.salary}</p>}
-                {application.jobPosting?.jobUrl && (
-                  <a
-                    href={application.jobPosting.jobUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-block text-gray-900 underline"
-                  >
-                    View posting
-                  </a>
-                )}
-              </div>
+              {editingPosting && application.jobPosting ? (
+                // Framed so the posting form reads as one region, separate from
+                // the application fields (status, notes, …) below it.
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <JobPostingForm
+                    posting={application.jobPosting}
+                    onSave={handleSavePosting}
+                    onCancel={() => setEditingPosting(false)}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  {/* Company and location live in the header, visible either way. */}
+                  <div className="text-sm text-gray-600">
+                    {application.jobPosting?.salary && <p>{application.jobPosting.salary}</p>}
+                    {application.jobPosting?.jobUrl && (
+                      <a
+                        href={application.jobPosting.jobUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-block text-gray-900 underline"
+                      >
+                        View posting
+                      </a>
+                    )}
+                  </div>
+                  {application.jobPosting && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingPosting(true)}
+                      className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Edit job details
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
@@ -286,7 +330,8 @@ export default function ApplicationDetailPage() {
               </div>
             </CollapsibleCard>
 
-            {application.jobPosting?.description && (
+            {/* Hidden while editing — the form above owns the description then. */}
+            {!editingPosting && application.jobPosting?.description && (
               <CollapsibleCard
                 storageKey="job-description"
                 defaultOpen={false}
