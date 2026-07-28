@@ -51,33 +51,70 @@ on `main`):
 git add <files>
 git commit -m "<imperative summary>
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+Co-Authored-By: <current model> <noreply@anthropic.com>"
 git push origin main
 ```
+
+Use whichever model name your harness instructions specify for the `Co-Authored-By`
+trailer — don't hardcode one here, it goes stale every release.
+
+**Shell gotcha:** this repo's default shell is Git Bash, and the PowerShell here-string
+form (`-m @'…'@`) is *not* bash syntax — bash passes it through literally and you end up
+with a commit whose subject line is `@`. For a multi-line message in bash use a real
+heredoc (`git commit -F - <<'MSG' … MSG`) or repeated `-m` flags.
 
 Deploying is outward-facing — only push when the user has asked you to deploy/ship.
 
 ## 4. Verify the deploy landed
 
-`gh` is **not** installed here, so verify against production directly. Give the API
-pipeline a few minutes (build + push + SSM), then:
+`gh` is **not** installed here, but the repo is public — so verify against the GitHub
+Actions REST API, keyed to the SHA you just pushed. Give the pipeline a couple of
+minutes (build + push + SSM ≈ 2 min), then:
 
 ```bash
-# API is up and healthy:
-curl -fsS https://jobstrackerapi.duckdns.org/health
+SHA=$(git rev-parse HEAD)
 
-# Confirm YOUR new code is live, not just that the old container is healthy.
-# Probe a route you added/changed. A route that exists but needs auth returns 401;
-# a route that isn't deployed yet returns 404. Example for a new authed endpoint:
-curl -s -o /dev/null -w '%{http_code}\n' -X POST \
-  https://jobstrackerapi.duckdns.org/api/jobs/scrape
-# 401 = new code deployed · 404 = old code still serving (wait / check Actions)
+# Workflow-level result for YOUR commit:
+curl -s "https://api.github.com/repos/bfp4/Job-Application-Tracker/actions/runs?head_sha=$SHA" \
+  | grep -E '"(status|conclusion)"' | head -2
+
+# Per-job results — this is the one that matters:
+RUN=$(curl -s "https://api.github.com/repos/bfp4/Job-Application-Tracker/actions/runs?head_sha=$SHA" \
+  | grep -m1 '"id"' | tr -dc '0-9')
+curl -s "https://api.github.com/repos/bfp4/Job-Application-Tracker/actions/runs/$RUN/jobs" \
+  | grep -E '"(name|conclusion)"' | grep -B1 -A1 'Deploy API to EC2'
 ```
 
-For the frontend, load the relevant page on the Vercel URL and confirm the change renders.
+In the jobs payload `conclusion` comes *before* `name`, so the result you want is the
+line **above** `"name": "Deploy API to EC2"` — read it carefully rather than grabbing the
+first `conclusion` in the output.
 
-If you have credentials, the API deploy status is also visible in GitHub Actions
-(repo `bfp4/Job-Application-Tracker`) and via the SSM command history in the AWS console.
+Check **both**, not just the first: a green workflow does **not** prove the API
+deployed. `deploy-api` is guarded by an `if:` on repo variables (see Key facts), and a
+**skipped job still leaves the workflow `success`**. You want the `Deploy API to EC2`
+job itself at `conclusion: success`, with its `Deploy on instance via SSM` step green —
+that step is where `on-instance-deploy.sh` runs, so its success is also your signal that
+`prisma migrate deploy` applied cleanly against RDS.
+
+Then confirm the service is actually serving:
+
+```bash
+curl -fsS https://jobstrackerapi.duckdns.org/health   # {"status":"ok"}
+```
+
+> ⚠️ **Do not try to tell new code from old with a route probe.** An earlier version of
+> this skill suggested `401 = deployed · 404 = old code` against a newly added endpoint.
+> That has been broken since App Check went app-wide (commit `0db8454`): the middleware
+> runs **before** routing and returns 401 for *every* path, including ones that don't
+> exist. Verified 2026-07-28 — `POST /api/definitely-not-a-real-namespace` returns 401.
+> The probe reports success on the first attempt no matter what is deployed. Use the
+> Actions run above; it is the only signal here that distinguishes new code from old.
+
+**Frontend:** Vercel deploys on its own GitHub integration and is not part of `ci.yml`,
+so the Actions run says nothing about it. `curl -s -o /dev/null -w '%{http_code}'
+https://jobstrackeragent.vercel.app/` returning 200 only proves the site is up, not that
+your bundle shipped — most pages are auth-gated. To confirm a UI change actually renders,
+drive a logged-in session (see the `verify` skill) rather than asserting from a 200.
 
 ## Rollback
 
