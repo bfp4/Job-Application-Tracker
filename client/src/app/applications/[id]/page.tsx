@@ -8,6 +8,7 @@ import CollapsibleCard from "@/components/CollapsibleCard";
 import StatusBadge from "@/components/StatusBadge";
 import ResumeTipsSection from "@/components/ResumeTipsSection";
 import TailoredResumeSection from "@/components/TailoredResumeSection";
+import CoverLetterSection from "@/components/CoverLetterSection";
 import QuestionsSection from "@/components/QuestionsSection";
 import ContactsSection from "@/components/ContactsSection";
 import JobPostingForm, { type JobPostingEdits } from "@/components/JobPostingForm";
@@ -347,6 +348,8 @@ export default function ApplicationDetailPage() {
             <ResumeTipsSection applicationId={id} />
 
             <TailoredResumeSection applicationId={id} />
+
+            <CoverLetterSection applicationId={id} />
 
             <QuestionsSection
               applicationId={id}

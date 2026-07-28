@@ -189,6 +189,36 @@ export interface TailoredResume {
   updatedAt: string;
 }
 
+/**
+ * A cover letter written for one posting from the user's base resume.
+ * KEEP IN SYNC with CoverLetterContent / COVER_LETTER_SCHEMA in
+ * server/src/services/coverLetter.ts and the renderer in
+ * server/src/lib/coverLetterRender.ts — the content is opaque stored JSON.
+ *
+ * No date field by design: the PDF is stamped with the date it's downloaded.
+ */
+export interface CoverLetterContent {
+  header: { name: string; contact: string[] };
+  recipient: { name: string | null; title: string | null; company: string | null };
+  greeting: string;
+  paragraphs: string[];
+  closing: string;
+  signature: string;
+  approachNote: string;
+}
+
+/** A saved cover letter for one application. */
+export interface CoverLetter {
+  id: string;
+  applicationId: string;
+  baseResumeId: string;
+  jobPostingHash: string;
+  content: CoverLetterContent;
+  edited: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A follow-up joined with its parent application, used on the dashboard. */
 export interface FollowUpWithApplication extends FollowUp {
   application: Application;

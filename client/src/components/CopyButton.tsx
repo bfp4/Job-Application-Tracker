@@ -6,12 +6,17 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * Icon button that copies `value` to the clipboard and flashes a checkmark
  * as confirmation. Renders nothing while `value` is empty. Position it via
  * `className`, or use `CopyField` to overlay it on an input/textarea.
+ *
+ * Pass `label` where copying is a primary action rather than an affordance on
+ * a field — the button then reads as a peer of the other buttons around it.
  */
 export default function CopyButton({
   value,
+  label,
   className = "",
 }: {
   value: string;
+  label?: string;
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -45,7 +50,11 @@ export default function CopyButton({
       onMouseDown={(e) => e.preventDefault()}
       title="Copy to clipboard"
       aria-label="Copy to clipboard"
-      className={`rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 ${className}`}
+      className={
+        label
+          ? `inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 ${className}`
+          : `rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 ${className}`
+      }
     >
       {copied ? (
         <svg
@@ -74,6 +83,7 @@ export default function CopyButton({
           />
         </svg>
       )}
+      {label && <span>{copied ? "Copied" : label}</span>}
     </button>
   );
 }

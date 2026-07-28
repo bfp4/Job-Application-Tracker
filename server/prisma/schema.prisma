@@ -43,6 +43,7 @@ model BaseResume {
   createdAt        DateTime          @default(now())
   resumeAnalyses   ResumeAnalysis[]
   tailoredResumes  TailoredResume[]
+  coverLetters     CoverLetter[]
 
   @@index([userId])
 }
@@ -103,6 +104,7 @@ model Application {
   followUps      FollowUp[]
   resumeAnalysis ResumeAnalysis?
   tailoredResume TailoredResume?
+  coverLetter    CoverLetter?
   questions      ApplicationQuestion[]
   contacts       Contact[]
 
@@ -179,6 +181,22 @@ model ResumeAnalysis {
 // staleness rule as ResumeAnalysis. `edited` flips true once the user hand-
 // edits the draft, so a regenerate can warn before discarding their changes.
 model TailoredResume {
+  id             String      @id @default(cuid())
+  applicationId  String      @unique
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  baseResumeId   String
+  baseResume     BaseResume  @relation(fields: [baseResumeId], references: [id])
+  jobPostingHash String
+  content        Json
+  edited         Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+// One saved cover-letter draft per application, written from the base resume
+// and the posting. Same baseResumeId + jobPostingHash staleness rule and same
+// `edited` guard as TailoredResume.
+model CoverLetter {
   id             String      @id @default(cuid())
   applicationId  String      @unique
   application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)

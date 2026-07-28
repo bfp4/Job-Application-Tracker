@@ -60,3 +60,22 @@ export function makeTailoredContent(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/** A valid CoverLetterContent shape (structurally, not typed here to keep
+ *  fixtures free of a service import) — override what the test cares about. */
+export function makeCoverLetterContent(overrides: Record<string, unknown> = {}) {
+  return {
+    header: { name: "Ada Lovelace", contact: ["ada@example.com", "London, UK"] },
+    recipient: { name: null, title: "Hiring Manager", company: "Acme" },
+    greeting: "Dear Hiring Manager,",
+    paragraphs: [
+      "I'm applying for the Software Engineer role at Acme.",
+      "At my last job I built distributed systems that served millions of requests a day.",
+      "I'd welcome a conversation about the team's roadmap.",
+    ],
+    closing: "Sincerely,",
+    signature: "Ada Lovelace",
+    approachNote: "Leads on distributed-systems experience.",
+    ...overrides,
+  };
+}

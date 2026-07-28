@@ -15,7 +15,9 @@ import { getObjectText } from "../lib/s3";
 import { jobPostingFingerprint } from "../lib/prompt";
 import { generateResumeTips } from "../services/resumeTips";
 import { generateTailoredResume } from "../services/tailoredResume";
+import { generateCoverLetter, type CoverLetterContent } from "../services/coverLetter";
 import { renderTailoredResumePdf } from "../lib/resumeRender";
+import { renderCoverLetterPdf } from "../lib/coverLetterRender";
 
 const router = Router();
 
@@ -580,7 +582,12 @@ router.get(
     >[0];
     const pdf = await renderTailoredResumePdf(content);
 
-    const filename = tailoredResumeFilename(ctx.application.jobPosting, content);
+    const filename = documentFilename(
+      ctx.application.jobPosting,
+      content.header?.name,
+      "Resume",
+      "Tailored-Resume"
+    );
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -592,18 +599,244 @@ router.get(
 
 /**
  * A safe download filename like "Ada-Lovelace-Acme-Resume.pdf", falling back to
- * the posting title when the resume has no usable name.
+ * the posting title when the document has no usable candidate name, and to
+ * `fallback` when nothing usable is left.
  */
-function tailoredResumeFilename(
+function documentFilename(
   posting: { title: string; company: { name: string } | null },
-  content: { header?: { name?: string } }
+  candidateName: string | undefined,
+  kind: string,
+  fallback: string
 ): string {
-  const parts = [content.header?.name, posting.company?.name ?? posting.title, "Resume"]
+  const parts = [candidateName, posting.company?.name ?? posting.title, kind]
     .filter((p): p is string => Boolean(p && p.trim()))
     .map((p) => p.trim().replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
-  const base = parts.filter(Boolean).join("-") || "Tailored-Resume";
+  const base = parts.filter(Boolean).join("-") || fallback;
   return `${base}.pdf`;
 }
+
+/**
+ * Loads everything the cover-letter endpoints need: the application (with
+ * posting + company), the saved letter if any, the user's latest resume, and
+ * whether the saved draft is still current for that resume + posting. Mirrors
+ * loadTailoredResumeContext but for the separate letter table.
+ */
+async function loadCoverLetterContext(userId: string, applicationId: string) {
+  const [application, baseResume] = await Promise.all([
+    prisma.application.findFirst({
+      where: { id: applicationId, userId },
+      include: {
+        jobPosting: { include: { company: true } },
+        coverLetter: true,
+      },
+    }),
+    getLatestBaseResume(userId),
+  ]);
+
+  if (!application) return null;
+
+  const currentHash = jobPostingFingerprint(application.jobPosting);
+  const letter = application.coverLetter;
+  const upToDate = Boolean(
+    letter &&
+      baseResume &&
+      letter.baseResumeId === baseResume.id &&
+      letter.jobPostingHash === currentHash
+  );
+
+  return { application, letter, baseResume, currentHash, upToDate };
+}
+
+// Applications with a cover-letter generation running. Separate from the tips
+// and tailored-resume guards so the three never block each other.
+const coverLetterGenerationsInFlight = createInFlightGuard();
+
+/**
+ * GET /api/applications/:id/cover-letter
+ * Returns the saved cover letter (if any) plus whether it's still current.
+ */
+router.get(
+  "/:id/cover-letter",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ctx = await loadCoverLetterContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    res.json({
+      letter: ctx.letter ?? null,
+      upToDate: ctx.upToDate,
+      hasResume: Boolean(ctx.baseResume),
+    });
+  })
+);
+
+/**
+ * POST /api/applications/:id/cover-letter
+ * Generates (or regenerates) the cover letter. Refused with 409 while the saved
+ * draft is still current, or — because a regenerate overwrites the draft —
+ * while the user has hand-edited it and hasn't passed `force`.
+ */
+router.post(
+  "/:id/cover-letter",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const ctx = await loadCoverLetterContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    if (!ctx.baseResume) {
+      res.status(400).json({
+        error: "Upload a resume in Settings before generating a cover letter.",
+      });
+      return;
+    }
+
+    const force = req.query.force === "1" || req.body?.force === true;
+
+    // Protect hand-edits: a regenerate replaces the whole letter, so require an
+    // explicit confirmation once the user has edited it.
+    if (ctx.letter?.edited && !force) {
+      res.status(409).json({
+        error: "You've edited this letter. Regenerating will replace your edits.",
+        letter: ctx.letter,
+        upToDate: ctx.upToDate,
+        needsForce: true,
+      });
+      return;
+    }
+
+    if (ctx.upToDate && !force) {
+      res.status(409).json({
+        error:
+          "This cover letter is already up to date. Update your resume or the job posting to generate a new one.",
+        letter: ctx.letter,
+        upToDate: true,
+      });
+      return;
+    }
+
+    if (!coverLetterGenerationsInFlight.tryAcquire(ctx.application.id)) {
+      res.status(409).json({
+        error: "A cover letter is already being generated for this application.",
+        letter: ctx.letter ?? null,
+        upToDate: false,
+      });
+      return;
+    }
+
+    try {
+      const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
+      const content = await generateCoverLetter(
+        resumeMarkdown,
+        ctx.application.jobPosting,
+        req.user!.resumeSpecialization
+      );
+
+      const letter = await prisma.coverLetter.upsert({
+        where: { applicationId: ctx.application.id },
+        update: {
+          baseResumeId: ctx.baseResume.id,
+          jobPostingHash: ctx.currentHash,
+          content: content as unknown as Prisma.InputJsonValue,
+          edited: false,
+        },
+        create: {
+          applicationId: ctx.application.id,
+          baseResumeId: ctx.baseResume.id,
+          jobPostingHash: ctx.currentHash,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      res.status(201).json({ letter, upToDate: true, hasResume: true });
+    } finally {
+      coverLetterGenerationsInFlight.release(ctx.application.id);
+    }
+  })
+);
+
+/**
+ * PATCH /api/applications/:id/cover-letter
+ * Saves the user's hand-edits to the letter's content. Marks it `edited` so a
+ * later regenerate warns before overwriting.
+ */
+router.patch(
+  "/:id/cover-letter",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const content = req.body?.content;
+    if (content === null || typeof content !== "object" || Array.isArray(content)) {
+      res.status(400).json({ error: "`content` must be an object." });
+      return;
+    }
+
+    const ctx = await loadCoverLetterContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+    if (!ctx.letter) {
+      res.status(404).json({ error: "No cover letter to edit yet." });
+      return;
+    }
+
+    const letter = await prisma.coverLetter.update({
+      where: { applicationId: ctx.application.id },
+      data: {
+        content: content as Prisma.InputJsonValue,
+        edited: true,
+      },
+    });
+
+    res.json({ letter, upToDate: ctx.upToDate, hasResume: Boolean(ctx.baseResume) });
+  })
+);
+
+/**
+ * GET /api/applications/:id/cover-letter/download?format=pdf
+ * Renders the current (possibly edited) letter to a document and streams it.
+ * Rendering on demand means an edit is always reflected, and the letter carries
+ * the date it was downloaded rather than the date it was generated.
+ */
+router.get(
+  "/:id/cover-letter/download",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const format = (req.query.format as string) ?? "pdf";
+    if (format !== "pdf") {
+      res.status(400).json({ error: "Only `format=pdf` is supported." });
+      return;
+    }
+
+    const ctx = await loadCoverLetterContext(req.user!.id, req.params.id);
+    if (!ctx) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+    if (!ctx.letter) {
+      res.status(404).json({ error: "No cover letter to download yet." });
+      return;
+    }
+
+    const content = ctx.letter.content as unknown as CoverLetterContent;
+    const pdf = await renderCoverLetterPdf(content);
+
+    const filename = documentFilename(
+      ctx.application.jobPosting,
+      content.header?.name,
+      "Cover-Letter",
+      "Cover-Letter"
+    );
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(pdf);
+  })
+);
 
 /**
  * POST /api/applications/:id/questions
