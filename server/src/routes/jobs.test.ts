@@ -35,7 +35,7 @@ const validBody = {
 describe("POST /api/jobs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    prismaMock.company.upsert.mockResolvedValue({ id: "company-1", name: "Acme", website: null });
+    prismaMock.company.upsert.mockResolvedValue({ id: "company-1", name: "Acme" });
     prismaMock.jobPosting.upsert.mockResolvedValue({ id: "posting-1" });
   });
 
@@ -95,7 +95,7 @@ describe("PATCH /api/jobs/:id", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    prismaMock.company.upsert.mockResolvedValue({ id: "company-2", name: "Globex", website: null });
+    prismaMock.company.upsert.mockResolvedValue({ id: "company-2", name: "Globex" });
     prismaMock.jobPosting.findFirst.mockResolvedValue(existing);
     prismaMock.jobPosting.update.mockResolvedValue({ ...existing, title: "Staff Engineer" });
   });

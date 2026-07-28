@@ -35,7 +35,7 @@ jobs:
       - run: npm test
 
   client:
-    name: Client (typecheck)
+    name: Client (lint + typecheck + tests)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,7 +48,9 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npm test
 
   lambda:
     name: Lambda (typecheck + tests)

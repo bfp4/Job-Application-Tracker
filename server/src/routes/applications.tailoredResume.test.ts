@@ -21,7 +21,10 @@ vi.mock("../middleware/auth", () => ({
     next();
   },
 }));
-vi.mock("../services/tailoredResume", () => ({
+// Only the Anthropic call is stubbed — isTailoredResumeContent is a pure
+// validator the PATCH route depends on, so it must stay the real one.
+vi.mock("../services/tailoredResume", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/tailoredResume")>()),
   generateTailoredResume: generateTailoredResumeMock,
 }));
 
@@ -168,6 +171,39 @@ describe("tailored-resume endpoints", () => {
     const res = await request(app)
       .patch("/api/applications/app-1/tailored-resume")
       .send({ content: "not an object" });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.tailoredResume.update).not.toHaveBeenCalled();
+  });
+
+  // The download endpoint renders a saved draft straight to a PDF, reading
+  // these fields without guards — a malformed draft must never reach the DB.
+  it.each([
+    ["an empty object", {}],
+    ["a missing header", { ...makeTailoredContent(), header: undefined }],
+    [
+      "a non-string header name",
+      { ...makeTailoredContent(), header: { name: 42, contact: [] } },
+    ],
+    [
+      "a non-string contact entry",
+      { ...makeTailoredContent(), header: { name: "Ada", contact: ["ok", 7] } },
+    ],
+    ["sections that aren't an array", { ...makeTailoredContent(), sections: "nope" }],
+    [
+      "a bullet missing `after`",
+      makeTailoredContent({
+        sections: [
+          { title: "Experience", entries: [{ heading: null, bullets: [{ before: null }] }] },
+        ],
+      }),
+    ],
+  ])("PATCH rejects %s", async (_label, content) => {
+    prismaMock.application.findFirst.mockResolvedValue(applicationRow(currentTailored()));
+
+    const res = await request(app)
+      .patch("/api/applications/app-1/tailored-resume")
+      .send({ content });
 
     expect(res.status).toBe(400);
     expect(prismaMock.tailoredResume.update).not.toHaveBeenCalled();

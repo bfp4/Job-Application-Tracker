@@ -51,7 +51,6 @@ model BaseResume {
 model Company {
   id          String       @id @default(cuid())
   name        String       @unique
-  website     String?
   jobPostings JobPosting[]
 }
 
@@ -69,8 +68,6 @@ model JobPosting {
   salary       String?
   jobUrl       String
   description  String?
-  matchScore   Int?
-  matchReasons String[]
   postedDate   DateTime?
   fetchedAt    DateTime      @default(now())
   applications Application[]
@@ -99,6 +96,11 @@ model Application {
   // Where the user found the job (LinkedIn, referral, ...). Free text.
   source       String?
   appliedDate  DateTime?
+  // Last time the reminder Lambda nudged the user to submit this application.
+  // Dedupes within a day (same rule as FollowUp.reminderSentAt) so a retried
+  // invocation can't re-send a nudge the user already got today; the next
+  // day's run nudges again until the application leaves NOT_APPLIED.
+  nudgeSentAt    DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   followUps      FollowUp[]
@@ -110,8 +112,9 @@ model Application {
 
   @@unique([userId, jobPostingId])
   @@index([userId])
-  // The daily reminder Lambda scans for status = NOT_APPLIED across all users.
-  @@index([status])
+  // The daily reminder Lambda scans for status = NOT_APPLIED across all users,
+  // skipping those already nudged today.
+  @@index([status, nudgeSentAt])
 }
 
 // Where the user is in the LinkedIn networking flow with a contact.

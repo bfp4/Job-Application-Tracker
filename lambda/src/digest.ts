@@ -26,6 +26,8 @@ export interface Digest {
   body: string;
   /** Follow-up ids to stamp reminderSentAt on after a successful send. */
   followUpIds: string[];
+  /** Application ids to stamp nudgeSentAt on after a successful send. */
+  applicationIds: string[];
 }
 
 const UNKNOWN_COMPANY = "Unknown company";
@@ -80,6 +82,7 @@ export function buildDigests(
       subject: buildSubject(entry.followUps.length, entry.notApplied.length),
       body: formatDigestEmail(entry.followUps, entry.notApplied),
       followUpIds: entry.followUps.map((f) => f.id),
+      applicationIds: entry.notApplied.map((a) => a.applicationId),
     });
   }
   return digests;

@@ -3,10 +3,6 @@ import {
   PutObjectCommand,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-const UPLOAD_URL_TTL_SECONDS = 5 * 60; // 5 minutes
-const DOWNLOAD_URL_TTL_SECONDS = 15 * 60; // 15 minutes
 
 interface S3Config {
   client: S3Client;
@@ -97,25 +93,4 @@ export async function getObjectText(key: string): Promise<string> {
     throw new Error(`S3 object ${key} has no body.`);
   }
   return body.transformToString("utf-8");
-}
-
-/**
- * Returns a pre-signed GET URL so the frontend can view/download a stored
- * file without routing the bytes through Express.
- */
-export async function getDownloadUrl(
-  key: string,
-  options?: { downloadFilename?: string }
-): Promise<string> {
-  const { client, bucket } = getS3();
-  const command = new GetObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    ...(options?.downloadFilename
-      ? {
-          ResponseContentDisposition: `attachment; filename="${options.downloadFilename}"`,
-        }
-      : {}),
-  });
-  return getSignedUrl(client, command, { expiresIn: DOWNLOAD_URL_TTL_SECONDS });
 }

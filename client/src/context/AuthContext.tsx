@@ -34,8 +34,6 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Re-sends the verification email to the given (just-authenticated) user. */
   resendVerification: (user: User) => Promise<void>;
-  /** Returns the current user's Firebase ID token, or null if signed out. */
-  getIdToken: (forceRefresh?: boolean) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -73,10 +71,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle: () => signInWithPopup(auth, googleProvider),
       signOut: () => firebaseSignOut(auth),
       resendVerification: (targetUser) => sendEmailVerification(targetUser),
-      getIdToken: (forceRefresh = false) =>
-        auth.currentUser
-          ? auth.currentUser.getIdToken(forceRefresh)
-          : Promise.resolve(null),
     }),
     [user, loading]
   );

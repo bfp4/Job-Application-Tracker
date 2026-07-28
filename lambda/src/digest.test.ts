@@ -71,6 +71,28 @@ describe("buildDigests", () => {
     expect(digest.body).toContain("NOT APPLIED YET");
     expect(digest.body).not.toContain("FOLLOW-UPS DUE");
     expect(digest.followUpIds).toEqual([]);
+    expect(digest.applicationIds).toEqual(["app_1"]);
+  });
+
+  // The ids the handler stamps after a successful send are what stops a
+  // retried invocation from re-sending the same digest.
+  it("carries the application ids to stamp, per user", () => {
+    const digests = buildDigests(
+      [],
+      [
+        notApplied({ applicationId: "app_1" }),
+        notApplied({ applicationId: "app_2" }),
+        notApplied({ applicationId: "app_3", userEmail: "other@example.com" }),
+      ]
+    );
+    const byAddress = new Map(digests.map((d) => [d.toAddress, d]));
+    expect(byAddress.get("ari@example.com")?.applicationIds).toEqual(["app_1", "app_2"]);
+    expect(byAddress.get("other@example.com")?.applicationIds).toEqual(["app_3"]);
+  });
+
+  it("leaves applicationIds empty for a follow-ups-only digest", () => {
+    const [digest] = buildDigests([followUp()], []);
+    expect(digest.applicationIds).toEqual([]);
   });
 
   it("combines both sections and pluralizes the subject", () => {

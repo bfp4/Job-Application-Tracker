@@ -57,6 +57,12 @@ export async function fetchDueFollowUps(
   return result.rows;
 }
 
+/**
+ * An unsubmitted application is nudged once per UTC day, every day, until it
+ * leaves NOT_APPLIED. nudgeSentAt dedupes within the day so a retried
+ * invocation (the handler throws when any recipient fails, and the schedule
+ * retries) cannot re-send a nudge the user already received today.
+ */
 export async function fetchNotAppliedApplications(
   client: pg.Client
 ): Promise<NotAppliedRow[]> {
@@ -71,18 +77,32 @@ export async function fetchNotAppliedApplications(
      JOIN "JobPosting" jp  ON jp.id = a."jobPostingId"
      LEFT JOIN "Company" c ON c.id  = jp."companyId"
      WHERE a.status = 'NOT_APPLIED'
+       AND (a."nudgeSentAt" IS NULL OR a."nudgeSentAt" < date_trunc('day', NOW()))
      ORDER BY u.email, a."createdAt"`
   );
   return result.rows;
 }
 
+/**
+ * Stamps everything the digest mentioned as sent, in one statement per table.
+ * Called only after that user's email is accepted by SES — a failed send
+ * leaves the rows unstamped so the next run (or retry) picks them up again.
+ */
 export async function markReminded(
   client: pg.Client,
-  followUpIds: string[]
+  followUpIds: string[],
+  applicationIds: string[]
 ): Promise<void> {
-  if (followUpIds.length === 0) return;
-  await client.query(
-    `UPDATE "FollowUp" SET "reminderSentAt" = NOW() WHERE id = ANY($1::text[])`,
-    [followUpIds]
-  );
+  if (followUpIds.length > 0) {
+    await client.query(
+      `UPDATE "FollowUp" SET "reminderSentAt" = NOW() WHERE id = ANY($1::text[])`,
+      [followUpIds]
+    );
+  }
+  if (applicationIds.length > 0) {
+    await client.query(
+      `UPDATE "Application" SET "nudgeSentAt" = NOW() WHERE id = ANY($1::text[])`,
+      [applicationIds]
+    );
+  }
 }

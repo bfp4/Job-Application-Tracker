@@ -34,5 +34,11 @@ RUN npx prisma generate
 
 COPY --from=build /app/dist ./dist
 
+# Drop root. Everything above (npm ci, prisma generate) needs to run as root;
+# serving requests and `prisma migrate deploy` do not. /app is chowned because
+# Prisma writes into node_modules/.prisma when it resolves engines at startup.
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 5000
 CMD ["node", "dist/index.js"]

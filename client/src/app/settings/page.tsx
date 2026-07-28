@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import AppShell from "@/components/AppShell";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
 import type {
@@ -30,16 +30,16 @@ export default function SettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [resumeRes, userRes] = await Promise.all([
-        apiFetch("/api/resumes/base"),
-        apiFetch("/api/user/me"),
+      // apiJson surfaces the server's error message; reading .json() directly
+      // would silently store `undefined` when either request fails.
+      const [resumeData, userData] = await Promise.all([
+        apiJson<{ baseResume: BaseResume | null }>("/api/resumes/base"),
+        apiJson<{
+          user: UserSettings;
+          specializationOptions: SpecializationOption[];
+        }>("/api/user/me"),
       ]);
-      const resumeData = (await resumeRes.json()) as { baseResume: BaseResume | null };
       setBaseResume(resumeData.baseResume);
-      const userData = (await userRes.json()) as {
-        user: UserSettings;
-        specializationOptions: SpecializationOption[];
-      };
       setSettings(userData.user);
       setSpecializationOptions(userData.specializationOptions);
     } catch (err) {

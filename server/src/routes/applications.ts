@@ -14,8 +14,15 @@ import { parseContactFields } from "../lib/contactInput";
 import { getObjectText } from "../lib/s3";
 import { jobPostingFingerprint } from "../lib/prompt";
 import { generateResumeTips } from "../services/resumeTips";
-import { generateTailoredResume } from "../services/tailoredResume";
-import { generateCoverLetter, type CoverLetterContent } from "../services/coverLetter";
+import {
+  generateTailoredResume,
+  isTailoredResumeContent,
+} from "../services/tailoredResume";
+import {
+  generateCoverLetter,
+  isCoverLetterContent,
+  type CoverLetterContent,
+} from "../services/coverLetter";
 import { renderTailoredResumePdf } from "../lib/resumeRender";
 import { renderCoverLetterPdf } from "../lib/coverLetterRender";
 
@@ -523,9 +530,13 @@ router.patch(
   "/:id/tailored-resume",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
+    // Validated in full, not just as "an object": the download endpoint renders
+    // this straight to a PDF and would otherwise 500 on a malformed draft.
     const content = req.body?.content;
-    if (content === null || typeof content !== "object" || Array.isArray(content)) {
-      res.status(400).json({ error: "`content` must be an object." });
+    if (!isTailoredResumeContent(content)) {
+      res.status(400).json({
+        error: "`content` must be a complete tailored resume.",
+      });
       return;
     }
 
@@ -542,7 +553,7 @@ router.patch(
     const tailored = await prisma.tailoredResume.update({
       where: { applicationId: ctx.application.id },
       data: {
-        content: content as Prisma.InputJsonValue,
+        content: content as unknown as Prisma.InputJsonValue,
         edited: true,
       },
     });
@@ -769,9 +780,13 @@ router.patch(
   "/:id/cover-letter",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
+    // Validated in full, not just as "an object": the download endpoint renders
+    // this straight to a PDF and would otherwise 500 on a malformed letter.
     const content = req.body?.content;
-    if (content === null || typeof content !== "object" || Array.isArray(content)) {
-      res.status(400).json({ error: "`content` must be an object." });
+    if (!isCoverLetterContent(content)) {
+      res.status(400).json({
+        error: "`content` must be a complete cover letter.",
+      });
       return;
     }
 
@@ -788,7 +803,7 @@ router.patch(
     const letter = await prisma.coverLetter.update({
       where: { applicationId: ctx.application.id },
       data: {
-        content: content as Prisma.InputJsonValue,
+        content: content as unknown as Prisma.InputJsonValue,
         edited: true,
       },
     });

@@ -13,6 +13,7 @@ interface Result {
   usersEmailed: number;
   usersFailed: number;
   followUpsMarked: number;
+  applicationsNudged: number;
 }
 
 export const handler = async (): Promise<Result> => {
@@ -31,6 +32,7 @@ export const handler = async (): Promise<Result> => {
 
     let usersEmailed = 0;
     let followUpsMarked = 0;
+    let applicationsNudged = 0;
     const failed: string[] = [];
 
     // Per-user isolation: one failed send (e.g. an unverified recipient
@@ -50,9 +52,10 @@ export const handler = async (): Promise<Result> => {
             },
           })
         );
-        await markReminded(client, digest.followUpIds);
+        await markReminded(client, digest.followUpIds, digest.applicationIds);
         usersEmailed += 1;
         followUpsMarked += digest.followUpIds.length;
+        applicationsNudged += digest.applicationIds.length;
       } catch (error) {
         failed.push(digest.toAddress);
         console.error(`Failed to send digest to ${digest.toAddress}:`, error);
@@ -63,6 +66,7 @@ export const handler = async (): Promise<Result> => {
       usersEmailed,
       usersFailed: failed.length,
       followUpsMarked,
+      applicationsNudged,
     };
     console.log(JSON.stringify(result));
 

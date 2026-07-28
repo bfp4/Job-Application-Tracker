@@ -15,11 +15,12 @@ const MAX_CONTACT_NOTES_CHARS = 2_000;
 const MESSAGE_SCHEMA = {
   type: "object",
   properties: {
+    // No `maxLength` here: string length constraints aren't part of the JSON
+    // Schema subset structured outputs supports. The limit is enforced by the
+    // prompt and, definitively, by the trim below.
     message: {
       type: "string",
-      description:
-        "The LinkedIn connection-request note, ready to paste. Plain text, first person, no greeting line breaks needed, and at most 300 characters including spaces.",
-      maxLength: MAX_CONNECT_MESSAGE_CHARS,
+      description: `The LinkedIn connection-request note, ready to paste. Plain text, first person, no greeting line breaks needed, and at most ${MAX_CONNECT_MESSAGE_CHARS} characters including spaces.`,
     },
   },
   required: ["message"],

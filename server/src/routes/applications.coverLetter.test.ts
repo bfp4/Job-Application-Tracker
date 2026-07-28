@@ -25,7 +25,10 @@ vi.mock("../middleware/auth", () => ({
     next();
   },
 }));
-vi.mock("../services/coverLetter", () => ({
+// Only the Anthropic call is stubbed — isCoverLetterContent is a pure
+// validator the PATCH route depends on, so it must stay the real one.
+vi.mock("../services/coverLetter", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/coverLetter")>()),
   generateCoverLetter: generateCoverLetterMock,
 }));
 
@@ -170,6 +173,33 @@ describe("cover-letter endpoints", () => {
     const res = await request(app)
       .patch("/api/applications/app-1/cover-letter")
       .send({ content: "not an object" });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.coverLetter.update).not.toHaveBeenCalled();
+  });
+
+  // The download endpoint renders a saved letter straight to a PDF, reading
+  // these fields without guards — a malformed letter must never reach the DB.
+  it.each([
+    ["an empty object", {}],
+    ["a missing header", { ...makeCoverLetterContent(), header: undefined }],
+    [
+      "a non-string header name",
+      { ...makeCoverLetterContent(), header: { name: 42, contact: [] } },
+    ],
+    [
+      "a recipient field that is neither string nor null",
+      makeCoverLetterContent({ recipient: { name: 7, title: null, company: null } }),
+    ],
+    ["paragraphs that aren't an array", makeCoverLetterContent({ paragraphs: "nope" })],
+    ["a non-string paragraph", makeCoverLetterContent({ paragraphs: ["ok", 7] })],
+    ["a missing closing", { ...makeCoverLetterContent(), closing: undefined }],
+  ])("PATCH rejects %s", async (_label, content) => {
+    prismaMock.application.findFirst.mockResolvedValue(applicationRow(currentLetter()));
+
+    const res = await request(app)
+      .patch("/api/applications/app-1/cover-letter")
+      .send({ content });
 
     expect(res.status).toBe(400);
     expect(prismaMock.coverLetter.update).not.toHaveBeenCalled();

@@ -20,60 +20,15 @@ import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import {
+  SORT_OPTIONS,
+  visibleApplications as selectVisibleApplications,
+  type SortKey,
+} from "@/lib/applicationList";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import { inputClassName } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
 import type { Application, ApplicationStatus, JobPosting, ScrapedPosting } from "@/lib/types";
-
-const SORT_OPTIONS = [
-  { value: "createdAt-desc", label: "Newest first" },
-  { value: "createdAt-asc", label: "Oldest first" },
-  { value: "appliedDate-desc", label: "Applied date (newest)" },
-  { value: "appliedDate-asc", label: "Applied date (oldest)" },
-  { value: "company-asc", label: "Company (A–Z)" },
-  { value: "title-asc", label: "Title (A–Z)" },
-] as const;
-
-type SortKey = (typeof SORT_OPTIONS)[number]["value"];
-
-function compareApplications(sortKey: SortKey, a: Application, b: Application): number {
-  switch (sortKey) {
-    case "createdAt-desc":
-      return b.createdAt.localeCompare(a.createdAt);
-    case "createdAt-asc":
-      return a.createdAt.localeCompare(b.createdAt);
-    case "appliedDate-desc":
-    case "appliedDate-asc": {
-      // Applications without an applied date sort last in either direction.
-      if (!a.appliedDate && !b.appliedDate) return 0;
-      if (!a.appliedDate) return 1;
-      if (!b.appliedDate) return -1;
-      return sortKey === "appliedDate-desc"
-        ? b.appliedDate.localeCompare(a.appliedDate)
-        : a.appliedDate.localeCompare(b.appliedDate);
-    }
-    case "company-asc":
-      return (a.jobPosting?.company?.name ?? "").localeCompare(
-        b.jobPosting?.company?.name ?? "",
-        undefined,
-        { sensitivity: "base" },
-      );
-    case "title-asc":
-      return (a.jobPosting?.title ?? "").localeCompare(b.jobPosting?.title ?? "", undefined, {
-        sensitivity: "base",
-      });
-  }
-}
-
-function matchesSearch(app: Application, query: string): boolean {
-  const haystack = [
-    app.jobPosting?.company?.name,
-    app.jobPosting?.title,
-    app.source,
-    ...(app.jobPosting?.location ?? []),
-  ];
-  return haystack.some((value) => value?.toLowerCase().includes(query));
-}
 
 export default function ApplicationsPage() {
   const router = useRouter();
@@ -170,6 +125,10 @@ export default function ApplicationsPage() {
     setAddingJob(true);
     setAddJobError(null);
     try {
+      // Two writes, not one transaction: if tracking fails after the posting
+      // is saved, that posting is left with no application. It stays invisible
+      // and costs nothing — POST /api/jobs upserts on (user, jobUrl), so
+      // retrying this form reuses the same row rather than adding another.
       const { jobPosting } = await apiJson<{ jobPosting: JobPosting }>("/api/jobs", {
         method: "POST",
         body: JSON.stringify({
@@ -197,11 +156,10 @@ export default function ApplicationsPage() {
     }
   }
 
-  const visibleApplications = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const filtered = query ? applications.filter((app) => matchesSearch(app, query)) : applications;
-    return [...filtered].sort((a, b) => compareApplications(sortKey, a, b));
-  }, [applications, search, sortKey]);
+  const visibleApplications = useMemo(
+    () => selectVisibleApplications(applications, search, sortKey),
+    [applications, search, sortKey]
+  );
 
   const applicationsByStatus = useMemo(() => {
     const grouped = {} as Record<ApplicationStatus, Application[]>;

@@ -46,7 +46,8 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
     return () => {
       cancelled = true;
     };
-  }, []);
+    // placesEnabled is a build-time constant, so this runs at most once.
+  }, [placesEnabled]);
 
   useEffect(() => {
     if (!placesReady || !containerRef.current || autocompleteElRef.current) return;
@@ -70,7 +71,7 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
 
     containerRef.current.appendChild(autocompleteEl);
     autocompleteElRef.current = autocompleteEl;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Everything else this reads is a ref, so `placesReady` is the only dep.
   }, [placesReady]);
 
   useEffect(() => {

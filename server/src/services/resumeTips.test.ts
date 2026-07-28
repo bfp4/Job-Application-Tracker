@@ -16,7 +16,7 @@ describe("jobPostingFingerprint", () => {
     expect(jobPostingFingerprint(makePosting({ location: ["Remote"] }))).not.toBe(base);
     expect(
       jobPostingFingerprint(
-        makePosting({ company: { id: "company-1", name: "Other Co", website: null } })
+        makePosting({ company: { id: "company-1", name: "Other Co" } })
       )
     ).not.toBe(base);
   });
@@ -29,7 +29,6 @@ describe("jobPostingFingerprint", () => {
         makePosting({
           id: "other-id",
           userId: "other-user",
-          matchScore: 95,
           fetchedAt: new Date("2026-07-05T12:00:00Z"),
         })
       )
@@ -39,7 +38,7 @@ describe("jobPostingFingerprint", () => {
   it("distinguishes a missing company from a company with an empty name", () => {
     expect(jobPostingFingerprint(makePosting({ company: null, companyId: null }))).not.toBe(
       jobPostingFingerprint(
-        makePosting({ company: { id: "company-1", name: "", website: null } })
+        makePosting({ company: { id: "company-1", name: "" } })
       )
     );
   });

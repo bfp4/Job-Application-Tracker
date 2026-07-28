@@ -44,6 +44,48 @@ export interface CoverLetterContent {
   approachNote: string;
 }
 
+/**
+ * Runtime check that an arbitrary JSON value is a usable CoverLetterContent.
+ *
+ * The generate path is constrained by COVER_LETTER_SCHEMA, but PATCH accepts a
+ * client-supplied body, and the PDF renderer reads this shape without guards
+ * (`content.header.contact.filter(...)`). Without this, a malformed PATCH is
+ * accepted and only fails later, as a 500, on download.
+ * KEEP IN SYNC with CoverLetterContent above.
+ */
+export function isCoverLetterContent(value: unknown): value is CoverLetterContent {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const c = value as Record<string, unknown>;
+
+  const header = c.header as Record<string, unknown> | undefined;
+  if (
+    typeof header !== "object" ||
+    header === null ||
+    typeof header.name !== "string" ||
+    !isStringArray(header.contact)
+  ) {
+    return false;
+  }
+
+  const recipient = c.recipient as Record<string, unknown> | undefined;
+  if (typeof recipient !== "object" || recipient === null) return false;
+  for (const field of ["name", "title", "company"] as const) {
+    if (recipient[field] !== null && typeof recipient[field] !== "string") return false;
+  }
+
+  if (!isStringArray(c.paragraphs)) return false;
+
+  for (const field of ["greeting", "closing", "signature", "approachNote"] as const) {
+    if (typeof c[field] !== "string") return false;
+  }
+
+  return true;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
 // KEEP IN SYNC with CoverLetterContent above and client/src/lib/types.ts.
 const COVER_LETTER_SCHEMA = {
   type: "object",

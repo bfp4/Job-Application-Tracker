@@ -5,7 +5,7 @@ import Link from "next/link";
 import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import type { ResumeAnalysis, ResumeTipsContent } from "@/lib/types";
+import type { ResumeAnalysis } from "@/lib/types";
 
 interface TipsResponse {
   analysis: ResumeAnalysis | null;

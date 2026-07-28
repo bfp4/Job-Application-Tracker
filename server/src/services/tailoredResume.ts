@@ -46,6 +46,62 @@ export interface TailoredResumeContent {
   changeNote: string;
 }
 
+/**
+ * Runtime check that an arbitrary JSON value is a usable TailoredResumeContent.
+ *
+ * The generate path is constrained by TAILORED_RESUME_SCHEMA, but PATCH accepts
+ * a client-supplied body, and the PDF renderer reads this shape without guards
+ * (`content.header.contact.filter(...)`, `section.entries`, `bullet.after`).
+ * Without this, a malformed PATCH is accepted and only fails later, as a 500,
+ * on download. KEEP IN SYNC with TailoredResumeContent above.
+ */
+export function isTailoredResumeContent(
+  value: unknown
+): value is TailoredResumeContent {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const c = value as Record<string, unknown>;
+
+  const header = c.header as Record<string, unknown> | undefined;
+  if (
+    typeof header !== "object" ||
+    header === null ||
+    typeof header.name !== "string" ||
+    !isStringArray(header.contact)
+  ) {
+    return false;
+  }
+
+  if (c.summary !== null && typeof c.summary !== "string") return false;
+  if (typeof c.changeNote !== "string") return false;
+  if (!Array.isArray(c.sections)) return false;
+
+  return c.sections.every((section) => {
+    if (typeof section !== "object" || section === null) return false;
+    const s = section as Record<string, unknown>;
+    if (typeof s.title !== "string" || !Array.isArray(s.entries)) return false;
+
+    return s.entries.every((entry) => {
+      if (typeof entry !== "object" || entry === null) return false;
+      const e = entry as Record<string, unknown>;
+      if (e.heading !== null && typeof e.heading !== "string") return false;
+      if (!Array.isArray(e.bullets)) return false;
+
+      return e.bullets.every((bullet) => {
+        if (typeof bullet !== "object" || bullet === null) return false;
+        const b = bullet as Record<string, unknown>;
+        return (
+          (b.before === null || typeof b.before === "string") &&
+          typeof b.after === "string"
+        );
+      });
+    });
+  });
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
 // KEEP IN SYNC with TailoredResumeContent above and client/src/lib/types.ts.
 const TAILORED_RESUME_SCHEMA = {
   type: "object",

@@ -9,7 +9,6 @@ export type ApplicationStatus =
 export interface Company {
   id: string;
   name: string;
-  website: string | null;
 }
 
 export interface JobPosting {
@@ -21,8 +20,6 @@ export interface JobPosting {
   location: string[];
   salary: string | null;
   jobUrl: string;
-  matchScore: number | null;
-  matchReasons: string[];
   postedDate: string | null;
   fetchedAt: string;
   company?: Company | null;
