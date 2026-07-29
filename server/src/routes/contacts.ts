@@ -124,7 +124,8 @@ router.post(
         contact.application.jobPosting,
         contact.application.status,
         contact.application.notes,
-        resumeMarkdown
+        resumeMarkdown,
+        req.user!.careerSpecialization
       );
 
       const updated = await prisma.contact.update({

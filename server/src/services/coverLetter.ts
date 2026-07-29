@@ -1,4 +1,4 @@
-import type { ResumeSpecialization } from "@prisma/client";
+import type { CareerSpecialization } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
 import {
   MAX_RESUME_CHARS,
@@ -190,7 +190,7 @@ Address the letter to a named person ONLY if the posting names one; otherwise us
 export async function generateCoverLetter(
   resumeMarkdown: string,
   posting: PostingWithCompany,
-  specialization?: ResumeSpecialization
+  specialization?: CareerSpecialization
 ): Promise<CoverLetterContent> {
   const postingDetails = formatPostingForPrompt(posting, {
     includeSalaryAndUrl: true,

@@ -166,7 +166,8 @@ router.post(
         resumeMarkdown,
         question.application.jobPosting,
         question.application.notes,
-        existingDraft
+        existingDraft,
+        req.user!.careerSpecialization
       );
 
       const updated = await prisma.applicationQuestion.update({

@@ -13,7 +13,7 @@ vi.mock("../middleware/auth", () => ({
       id: "user-1",
       email: "ada@example.com",
       firebaseUid: "fb-1",
-      resumeSpecialization: "GENERAL",
+      careerSpecialization: "GENERAL",
     } as never;
     next();
   },
@@ -35,7 +35,7 @@ describe("user settings endpoints", () => {
     expect(res.body.user).toEqual({
       id: "user-1",
       email: "ada@example.com",
-      resumeSpecialization: "GENERAL",
+      careerSpecialization: "GENERAL",
     });
     // Never leak firebaseUid.
     expect(res.body.user.firebaseUid).toBeUndefined();
@@ -50,7 +50,7 @@ describe("user settings endpoints", () => {
   it("PATCH /me rejects an unknown specialization", async () => {
     const res = await request(app)
       .patch("/api/user/me")
-      .send({ resumeSpecialization: "ASTRONAUT" });
+      .send({ careerSpecialization: "ASTRONAUT" });
 
     expect(res.status).toBe(400);
     expect(prismaMock.user.update).not.toHaveBeenCalled();
@@ -61,19 +61,19 @@ describe("user settings endpoints", () => {
       id: "user-1",
       email: "ada@example.com",
       firebaseUid: "fb-1",
-      resumeSpecialization: "SOFTWARE_ENGINEERING",
+      careerSpecialization: "SOFTWARE_ENGINEERING",
     });
 
     const res = await request(app)
       .patch("/api/user/me")
-      .send({ resumeSpecialization: "SOFTWARE_ENGINEERING" });
+      .send({ careerSpecialization: "SOFTWARE_ENGINEERING" });
 
     expect(res.status).toBe(200);
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
-      data: { resumeSpecialization: "SOFTWARE_ENGINEERING" },
+      data: { careerSpecialization: "SOFTWARE_ENGINEERING" },
     });
-    expect(res.body.user.resumeSpecialization).toBe("SOFTWARE_ENGINEERING");
+    expect(res.body.user.careerSpecialization).toBe("SOFTWARE_ENGINEERING");
     expect(res.body.user.firebaseUid).toBeUndefined();
   });
 });

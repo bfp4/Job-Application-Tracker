@@ -5,6 +5,7 @@ import Link from "next/link";
 import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { focusSections } from "@/lib/resumeTipsFocus";
 import type { ResumeAnalysis } from "@/lib/types";
 
 interface TipsResponse {
@@ -138,18 +139,21 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
         <div className="mt-4 space-y-5 border-t border-gray-100 pt-4">
           <p className="text-sm text-gray-700">{content.summary}</p>
 
-          {content.technologiesToStudy.length > 0 && (
-            <TipGroup title="Technologies to study">
+          {/* Which sections appear here depends on the career specialization
+              the analysis was generated for (technologies for engineers,
+              licences for nurses, and so on). */}
+          {focusSections(content).map((section) => (
+            <TipGroup key={section.key} title={section.title}>
               <ul className="space-y-2">
-                {content.technologiesToStudy.map((tech) => (
-                  <li key={tech.name} className="text-sm text-gray-600">
-                    <span className="font-medium text-gray-900">{tech.name}</span> —{" "}
-                    {tech.reason}
+                {section.items.map((item) => (
+                  <li key={item.name} className="text-sm text-gray-600">
+                    <span className="font-medium text-gray-900">{item.name}</span> —{" "}
+                    {item.reason}
                   </li>
                 ))}
               </ul>
             </TipGroup>
-          )}
+          ))}
 
           {content.missingFromResume.length > 0 && (
             <TipGroup title="Missing from your resume">

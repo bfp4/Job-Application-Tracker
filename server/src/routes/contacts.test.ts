@@ -24,7 +24,7 @@ const { generateConnectMessageMock, getLatestBaseResumeMock, getObjectTextMock }
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1" } as never;
+    req.user = { id: "user-1", careerSpecialization: "SALES" } as never;
     next();
   },
 }));
@@ -253,7 +253,8 @@ describe("contacts endpoints", () => {
         expect.objectContaining({ title: "Backend Engineer" }),
         "APPLIED",
         "Great culture fit.",
-        "# Resume\nBackend engineer."
+        "# Resume\nBackend engineer.",
+        "SALES"
       );
       expect(prismaMock.contact.update).toHaveBeenCalledWith({
         where: { id: "contact-1" },
@@ -279,7 +280,8 @@ describe("contacts endpoints", () => {
         expect.anything(),
         "APPLIED",
         expect.anything(),
-        null
+        null,
+        "SALES"
       );
     });
   });

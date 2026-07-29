@@ -22,7 +22,7 @@ vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../lib/s3", () => ({ getObjectText: getObjectTextMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1" } as never;
+    req.user = { id: "user-1", careerSpecialization: "CONSULTING" } as never;
     next();
   },
 }));
@@ -216,7 +216,8 @@ describe("application questions endpoints", () => {
         "# Resume\nExperience...",
         posting,
         "Met the team.",
-        null
+        null,
+        "CONSULTING"
       );
       expect(prismaMock.applicationQuestion.update).toHaveBeenCalledWith({
         where: { id: "question-1" },
@@ -238,7 +239,8 @@ describe("application questions endpoints", () => {
         expect.any(String),
         posting,
         expect.anything(),
-        null
+        null,
+        "CONSULTING"
       );
     });
 
@@ -256,7 +258,8 @@ describe("application questions endpoints", () => {
         expect.any(String),
         posting,
         expect.anything(),
-        "My rough unsaved draft."
+        "My rough unsaved draft.",
+        "CONSULTING"
       );
     });
 
@@ -276,7 +279,8 @@ describe("application questions endpoints", () => {
         expect.any(String),
         posting,
         expect.anything(),
-        "Saved answer."
+        "Saved answer.",
+        "CONSULTING"
       );
     });
 

@@ -100,8 +100,8 @@ export interface BaseResume {
   createdAt: string;
 }
 
-/** The field a user's tailored resumes are specialized for (enum value). */
-export type ResumeSpecialization =
+/** The career field a user's AI output is specialized for (enum value). */
+export type CareerSpecialization =
   | "GENERAL"
   | "SOFTWARE_ENGINEERING"
   | "FINANCE"
@@ -116,24 +116,68 @@ export type ResumeSpecialization =
 export interface UserSettings {
   id: string;
   email: string;
-  resumeSpecialization: ResumeSpecialization;
+  careerSpecialization: CareerSpecialization;
 }
 
 /** A specialization choice for the Settings dropdown (server-provided). */
 export interface SpecializationOption {
-  value: ResumeSpecialization;
+  value: CareerSpecialization;
   label: string;
 }
 
 /**
- * The structured advice produced by the resume-tips agent.
- * KEEP IN SYNC with the ResumeTipsContent interface and RESUME_TIPS_SCHEMA in
+ * A specialization-specific section of the resume tips — every field gets two
+ * of them, under keys that depend on the user's Career Specialization.
+ * KEEP IN SYNC with ResumeTipsFocusField in
+ * server/src/lib/resumeTipsSpecializations.ts; the labels live in
+ * client/src/lib/resumeTipsFocus.ts.
+ */
+export type ResumeTipsFocusKey =
+  // GENERAL
+  | "skillsToDevelop"
+  | "achievementsToQuantify"
+  // SOFTWARE_ENGINEERING
+  | "technologiesToStudy"
+  | "systemsToShowcase"
+  // FINANCE
+  | "credentialsAndSkillsToBuild"
+  | "transactionsToDetail"
+  // CONSULTING
+  | "capabilitiesToBuild"
+  | "engagementsToReframe"
+  // MARKETING
+  | "channelsAndToolsToLearn"
+  | "campaignsToQuantify"
+  // SALES
+  | "skillsAndToolsToSharpen"
+  | "numbersToProve"
+  // HEALTHCARE
+  | "certificationsToPursue"
+  | "clinicalDetailsToAdd"
+  // DESIGN
+  | "toolsAndSkillsToDevelop"
+  | "portfolioWorkToShow"
+  // DATA_ANALYTICS
+  | "toolsAndMethodsToLearn"
+  | "analysesToShowcase";
+
+export interface ResumeTipsFocusItem {
+  name: string;
+  reason: string;
+}
+
+/**
+ * The structured advice produced by the resume-tips agent: fields every
+ * analysis has, plus the two focus sections belonging to the specialization it
+ * was generated for. The focus keys are optional because a stored analysis
+ * only ever carries the pair its own specialization defined.
+ *
+ * KEEP IN SYNC with ResumeTipsContent / resumeTipsSchema in
  * server/src/services/resumeTips.ts — the content arrives as opaque stored
  * JSON, so drift silently renders empty sections here.
  */
-export interface ResumeTipsContent {
+export type ResumeTipsContent = {
   summary: string;
-  technologiesToStudy: { name: string; reason: string }[];
   missingFromResume: string[];
   bulletPointSuggestions: {
     current: string | null;
@@ -142,7 +186,7 @@ export interface ResumeTipsContent {
   }[];
   strengthsToHighlight: string[];
   additionalTips: string[];
-}
+} & Partial<Record<ResumeTipsFocusKey, ResumeTipsFocusItem[]>>;
 
 /** A saved resume-tips analysis for one application. */
 export interface ResumeAnalysis {

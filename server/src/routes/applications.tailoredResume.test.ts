@@ -17,7 +17,7 @@ vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../lib/s3", () => ({ getObjectText: getObjectTextMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1", resumeSpecialization: "SOFTWARE_ENGINEERING" } as never;
+    req.user = { id: "user-1", careerSpecialization: "SOFTWARE_ENGINEERING" } as never;
     next();
   },
 }));

@@ -1,3 +1,4 @@
+import type { CareerSpecialization } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
 import {
   MAX_RESUME_CHARS,
@@ -5,6 +6,7 @@ import {
   truncate,
   type PostingWithCompany,
 } from "../lib/prompt";
+import { applicationQuestionGuidance } from "../lib/applicationQuestionSpecializations";
 
 const ANSWER_SCHEMA = {
   type: "object",
@@ -32,13 +34,19 @@ const MAX_DRAFT_CHARS = 10_000;
  * When `existingDraft` is provided the call refines it — the draft's
  * substance and voice lead, the other materials support — instead of
  * writing a fresh answer.
+ *
+ * What a strong answer looks like depends on the field (a consulting reviewer
+ * wants the answer first and a structure under it; a nurse manager wants
+ * patient safety and the outcome), so the candidate's Career Specialization
+ * shapes the answer, falling back to General when unset.
  */
 export async function generateQuestionAnswer(
   question: string,
   resumeMarkdown: string,
   posting: PostingWithCompany,
   applicationNotes: string | null,
-  existingDraft: string | null = null
+  existingDraft: string | null = null,
+  specialization?: CareerSpecialization
 ): Promise<string> {
   const postingDetails = formatPostingForPrompt(posting);
 
@@ -62,9 +70,13 @@ export async function generateQuestionAnswer(
     ? "Refine the candidate's draft answer to this job-application question. The draft is the primary source: keep its substance, angle, and any personal details it adds beyond the resume, and preserve the candidate's voice. Improve clarity, structure, grammar, and impact, and strengthen it with relevant specifics from the resume — do not discard the draft's ideas and start over."
     : "Draft an answer to this job-application question for the candidate.";
 
+  const { label, guidance } = applicationQuestionGuidance(specialization);
+
   const { answer } = await generateStructured<{ answer: string }>({
-    system:
+    system: [
       "You ghost-write answers to job-application form questions on behalf of a candidate. Write in the candidate's voice, in the first person, grounded strictly in their resume, notes, and any draft they provide — never invent employers, projects, metrics, or dates that aren't there. Where a compelling answer needs a specific detail the materials don't provide, insert a short [bracketed placeholder] describing what the candidate should fill in. Tailor the answer to the specific company and posting. Match the answer's length to the question: most application answers should be roughly 100–250 words — concise, concrete, and free of clichés and filler.",
+      `This candidate is targeting ${label} roles. Shape the answer the way that field's reviewers expect (without inventing anything):\n${guidance}`,
+    ].join("\n\n"),
     prompt: `${instruction}\n\n${sections.join("\n\n")}`,
     schema: ANSWER_SCHEMA,
     // Adaptive thinking shares this budget with the JSON output — keep headroom.

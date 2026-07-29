@@ -7,10 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Field a user's tailored resume is specialized for. Drives the field-specific
-// guidance in the tailored-resume generation prompt. KEEP IN SYNC with
-// SPECIALIZATIONS in server/src/lib/resumeSpecializations.ts.
-enum ResumeSpecialization {
+// The career field a user's AI output is specialized for. Drives the
+// field-specific guidance in the tailored-resume, cover-letter, resume-tips,
+// LinkedIn-note, and application-answer prompts. KEEP IN SYNC with
+// CAREER_SPECIALIZATION_LABELS in server/src/lib/careerSpecializations.ts.
+enum CareerSpecialization {
   GENERAL
   SOFTWARE_ENGINEERING
   FINANCE
@@ -27,8 +28,8 @@ model User {
   firebaseUid          String               @unique
   email                String               @unique
   createdAt            DateTime             @default(now())
-  // How the user wants their tailored resumes specialized (see enum above).
-  resumeSpecialization ResumeSpecialization @default(GENERAL)
+  // The career field the user wants their AI output specialized for (see enum above).
+  careerSpecialization CareerSpecialization @default(GENERAL)
   baseResumes          BaseResume[]
   applications         Application[]
   jobPostings          JobPosting[]

@@ -25,7 +25,7 @@ const dbUser = {
   id: "user-1",
   email: "ada@example.com",
   firebaseUid: "fb-1",
-  resumeSpecialization: "GENERAL",
+  careerSpecialization: "GENERAL",
 };
 
 describe("authenticate middleware", () => {

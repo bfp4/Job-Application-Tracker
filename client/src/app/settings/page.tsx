@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
 import type {
   BaseResume,
-  ResumeSpecialization,
+  CareerSpecialization,
   SpecializationOption,
   UserSettings,
 } from "@/lib/types";
@@ -50,16 +50,16 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleSpecializationChange(value: ResumeSpecialization) {
+  async function handleSpecializationChange(value: CareerSpecialization) {
     const previous = settings;
     // Optimistic: reflect the choice immediately, roll back on failure.
-    setSettings((s) => (s ? { ...s, resumeSpecialization: value } : s));
+    setSettings((s) => (s ? { ...s, careerSpecialization: value } : s));
     setSavingSpecialization(true);
     setError(null);
     try {
       const res = await apiFetch("/api/user/me", {
         method: "PATCH",
-        body: JSON.stringify({ resumeSpecialization: value }),
+        body: JSON.stringify({ careerSpecialization: value }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Failed to save specialization.");
@@ -147,11 +147,12 @@ export default function SettingsPage() {
 
         {!loading && settings && (
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">Resume specialization</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Career specialization</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Tailored resumes are rewritten using the conventions of this field —
-              which achievements to foreground, which keywords matter, how to order
-              sections. Every tailored resume is capped at one page.
+              Everything the AI writes for you follows the conventions of this field —
+              tailored resumes, cover letters, resume tips, LinkedIn notes, and
+              application answers. It decides which achievements to foreground, which
+              keywords matter, and what advice is worth giving.
             </p>
 
             <div className="mt-4 max-w-xs">
@@ -163,9 +164,9 @@ export default function SettingsPage() {
               </label>
               <select
                 id="specialization"
-                value={settings.resumeSpecialization}
+                value={settings.careerSpecialization}
                 onChange={(e) =>
-                  handleSpecializationChange(e.target.value as ResumeSpecialization)
+                  handleSpecializationChange(e.target.value as CareerSpecialization)
                 }
                 disabled={savingSpecialization}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 disabled:opacity-50"

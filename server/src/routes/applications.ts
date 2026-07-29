@@ -349,7 +349,8 @@ router.post(
       const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
       const content = await generateResumeTips(
         resumeMarkdown,
-        ctx.application.jobPosting
+        ctx.application.jobPosting,
+        req.user!.careerSpecialization
       );
 
       const analysis = await prisma.resumeAnalysis.upsert({
@@ -495,7 +496,7 @@ router.post(
       const content = await generateTailoredResume(
         resumeMarkdown,
         ctx.application.jobPosting,
-        req.user!.resumeSpecialization
+        req.user!.careerSpecialization
       );
 
       const tailored = await prisma.tailoredResume.upsert({
@@ -745,7 +746,7 @@ router.post(
       const content = await generateCoverLetter(
         resumeMarkdown,
         ctx.application.jobPosting,
-        req.user!.resumeSpecialization
+        req.user!.careerSpecialization
       );
 
       const letter = await prisma.coverLetter.upsert({

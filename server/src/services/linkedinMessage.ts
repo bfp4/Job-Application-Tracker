@@ -1,4 +1,4 @@
-import type { ApplicationStatus } from "@prisma/client";
+import type { ApplicationStatus, CareerSpecialization } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
 import { MAX_CONNECT_MESSAGE_CHARS } from "../lib/contactInput";
 import {
@@ -7,6 +7,7 @@ import {
   truncate,
   type PostingWithCompany,
 } from "../lib/prompt";
+import { linkedinMessageGuidance } from "../lib/linkedinMessageSpecializations";
 
 // Small caps for the free-text segments unique to this prompt.
 const MAX_NOTES_CHARS = 4_000;
@@ -68,13 +69,19 @@ function statusGuidance(status: ApplicationStatus): string {
  * of ~120–180 chars outperform ones that fill the whole 300, and that a
  * request should open a relationship (a specific, genuine reason to connect),
  * not pitch or ask for a job outright.
+ *
+ * Within those 300 characters the register and the one credibility detail vary
+ * by field — a finance note reads nothing like a design note — so the
+ * candidate's Career Specialization steers both. It falls back to General when
+ * the user hasn't chosen one.
  */
 export async function generateConnectMessage(
   contact: ContactForMessage,
   posting: PostingWithCompany,
   applicationStatus: ApplicationStatus,
   applicationNotes: string | null,
-  resumeMarkdown: string | null
+  resumeMarkdown: string | null,
+  specialization?: CareerSpecialization
 ): Promise<string> {
   const contactLines = [`Name: ${contact.name}`];
   if (contact.position?.trim()) {
@@ -102,9 +109,12 @@ export async function generateConnectMessage(
     );
   }
 
+  const { label, guidance } = linkedinMessageGuidance(specialization);
+
   const { message } = await generateStructured<{ message: string }>({
     system: [
       "You ghost-write LinkedIn connection-request notes for a job candidate reaching out to a contact at a company they are applying to. The goal is to open a relationship that improves the visibility of the candidate's application — not to pitch or ask for a job in the note itself.",
+      `This candidate is targeting ${label} roles. Write the note the way it lands in that field:\n${guidance}`,
       "Hard rules:",
       "- HARD LIMIT: at most 300 characters including spaces. Aim for 180–260 characters — concise beats comprehensive.",
       "- Write in the first person as the candidate, warm and professional, never stiff or salesy.",

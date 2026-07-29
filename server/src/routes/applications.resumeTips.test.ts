@@ -17,7 +17,7 @@ vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../lib/s3", () => ({ getObjectText: getObjectTextMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1" } as never;
+    req.user = { id: "user-1", careerSpecialization: "HEALTHCARE" } as never;
     next();
   },
 }));
@@ -39,7 +39,8 @@ const baseResume = makeBaseResume();
 
 const tipsContent = {
   summary: "Solid fit.",
-  technologiesToStudy: [],
+  certificationsToPursue: [],
+  clinicalDetailsToAdd: [],
   missingFromResume: [],
   bulletPointSuggestions: [],
   strengthsToHighlight: [],
@@ -124,7 +125,11 @@ describe("resume-tips endpoints", () => {
 
     expect(res.status).toBe(201);
     expect(getObjectTextMock).toHaveBeenCalledWith(baseResume.markdownS3Key);
-    expect(generateResumeTipsMock).toHaveBeenCalledWith("# Resume\nExperience...", posting);
+    expect(generateResumeTipsMock).toHaveBeenCalledWith(
+      "# Resume\nExperience...",
+      posting,
+      "HEALTHCARE"
+    );
     expect(prismaMock.resumeAnalysis.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { applicationId: "app-1" },

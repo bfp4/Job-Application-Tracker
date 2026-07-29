@@ -1,4 +1,4 @@
-import type { ResumeSpecialization } from "@prisma/client";
+import type { CareerSpecialization } from "@prisma/client";
 import { generateStructured } from "../lib/anthropic";
 import {
   MAX_RESUME_CHARS,
@@ -6,7 +6,7 @@ import {
   truncate,
   type PostingWithCompany,
 } from "../lib/prompt";
-import { specializationGuidance } from "./../lib/resumeSpecializations";
+import { specializationGuidance } from "./../lib/tailoredResumeSpecializations";
 
 /**
  * A resume retargeted at one posting by rephrasing and reordering the base
@@ -216,7 +216,7 @@ For every bullet you output, set \`before\` to the resume line you derived it fr
 export async function generateTailoredResume(
   resumeMarkdown: string,
   posting: PostingWithCompany,
-  specialization?: ResumeSpecialization
+  specialization?: CareerSpecialization
 ): Promise<TailoredResumeContent> {
   const postingDetails = formatPostingForPrompt(posting, {
     includeSalaryAndUrl: true,

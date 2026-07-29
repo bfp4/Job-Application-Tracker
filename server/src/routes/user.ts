@@ -3,10 +3,10 @@ import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
 import {
-  SPECIALIZATIONS,
-  SPECIALIZATION_VALUES,
-  isResumeSpecialization,
-} from "../lib/resumeSpecializations";
+  CAREER_SPECIALIZATION_LABELS,
+  CAREER_SPECIALIZATION_VALUES,
+  isCareerSpecialization,
+} from "../lib/careerSpecializations";
 
 const router = Router();
 
@@ -14,19 +14,19 @@ const router = Router();
 function serializeUser(user: {
   id: string;
   email: string;
-  resumeSpecialization: string;
+  careerSpecialization: string;
 }) {
   return {
     id: user.id,
     email: user.email,
-    resumeSpecialization: user.resumeSpecialization,
+    careerSpecialization: user.careerSpecialization,
   };
 }
 
 /** The specialization options the Settings dropdown renders (value + label). */
-const specializationOptions = SPECIALIZATION_VALUES.map((value) => ({
+const specializationOptions = CAREER_SPECIALIZATION_VALUES.map((value) => ({
   value,
-  label: SPECIALIZATIONS[value].label,
+  label: CAREER_SPECIALIZATION_LABELS[value],
 }));
 
 /**
@@ -47,24 +47,24 @@ router.get(
 
 /**
  * PATCH /api/user/me
- * Updates the current user's settings. Only resumeSpecialization is editable.
+ * Updates the current user's settings. Only careerSpecialization is editable.
  */
 router.patch(
   "/me",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const { resumeSpecialization } = req.body ?? {};
+    const { careerSpecialization } = req.body ?? {};
 
-    if (!isResumeSpecialization(resumeSpecialization)) {
+    if (!isCareerSpecialization(careerSpecialization)) {
       res.status(400).json({
-        error: `\`resumeSpecialization\` must be one of: ${SPECIALIZATION_VALUES.join(", ")}.`,
+        error: `\`careerSpecialization\` must be one of: ${CAREER_SPECIALIZATION_VALUES.join(", ")}.`,
       });
       return;
     }
 
     const user = await prisma.user.update({
       where: { id: req.user!.id },
-      data: { resumeSpecialization },
+      data: { careerSpecialization },
     });
 
     res.json({ user: serializeUser(user) });
