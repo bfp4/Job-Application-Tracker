@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import AppShell from "@/components/AppShell";
+import PasswordSection from "@/components/PasswordSection";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
@@ -181,6 +182,8 @@ export default function SettingsPage() {
             </div>
           </section>
         )}
+
+        <PasswordSection />
       </div>
     </AppShell>
   );

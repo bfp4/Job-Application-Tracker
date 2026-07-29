@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { friendlyAuthError, validatePassword } from "./authErrors";
+import {
+  friendlyAuthError,
+  isBadCredentialError,
+  validatePassword,
+} from "./authErrors";
 
 describe("validatePassword", () => {
   it("accepts a password meeting every rule", () => {
@@ -41,11 +45,38 @@ describe("friendlyAuthError", () => {
   });
 
   it.each([
+    ["auth/expired-action-code", "This link has expired. Request a new one."],
+    [
+      "auth/invalid-action-code",
+      "This link is invalid or has already been used. Request a new one.",
+    ],
+  ])("maps %s to reset-link copy", (code, expected) => {
+    expect(friendlyAuthError({ code }, "fallback")).toBe(expected);
+  });
+
+  it.each([
     ["an unknown code", { code: "auth/some-new-thing" }],
     ["a non-object", "boom"],
     ["null", null],
     ["an object with no code", {}],
   ])("falls back for %s", (_label, err) => {
     expect(friendlyAuthError(err, "fallback")).toBe("fallback");
+  });
+});
+
+describe("isBadCredentialError", () => {
+  it.each([["auth/invalid-credential"], ["auth/wrong-password"], ["auth/user-not-found"]])(
+    "flags %s so the login page can offer a password reset",
+    (code) => {
+      expect(isBadCredentialError({ code })).toBe(true);
+    }
+  );
+
+  it.each([
+    ["a different auth failure", { code: "auth/too-many-requests" }],
+    ["a non-object", "boom"],
+    ["null", null],
+  ])("does not flag %s", (_label, err) => {
+    expect(isBadCredentialError(err)).toBe(false);
   });
 });

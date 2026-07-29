@@ -49,6 +49,7 @@ A few decisions worth calling out:
 - **Staleness-gated AI runs.** Each saved analysis records the resume version it used and a SHA-256 fingerprint of the posting's content fields. While both are unchanged, the server refuses to regenerate (HTTP 409) and the UI disables the button — no way to burn tokens re-running an identical analysis. Uploading a new resume or editing the posting re-enables it.
 - **PDF → Markdown at upload time.** Resumes are converted once when uploaded and both artifacts stored in S3; the agent reads the Markdown, keeping analysis requests fast and cheap.
 - **Defense on the write path.** URL validation rejects non-http(s) schemes (stored-XSS vector, since posting URLs render as links), uploads are capped at 10 MB in memory, hand-edited AI drafts are structurally validated before they're stored (the download endpoint renders them straight to a PDF), and every route checks row ownership against the authenticated user.
+- **One account per email, recoverable either way.** Signing up with Google creates an account with no password, so a later email/password login is rejected — and Firebase can't say why without revealing which emails are registered. The reset flow doubles as the fix: it sets a password on that same uid (adding the `password` provider next to `google.com`), so the account keeps its data and both sign-in methods work afterwards. Signed-in users can do the same from Settings without the email round-trip. Reset links land on [`/auth/action`](client/src/app/auth/action/page.tsx) rather than Firebase's hosted page so the signup password rules apply to resets too.
 - **Reminders are idempotent per day.** Both digest sections record when they were sent — `FollowUp.reminderSentAt` and `Application.nudgeSentAt` — and are stamped only after SES accepts that user's email. A retried invocation (the handler fails loudly when any recipient bounces) re-sends nothing that already went out, while a genuinely failed send stays queued for the next run.
 
 ## Getting started
@@ -69,6 +70,12 @@ cp .env.example .env.local  # fill in Firebase Web SDK config (+ optional Google
 npm install
 npm run dev                 # http://localhost:3000
 ```
+
+In the Firebase console, under **Authentication → Templates → Password reset**, set the
+action URL to `https://<your-domain>/auth/action` (`http://localhost:3000/auth/action`
+for local work). Without it the emailed link opens Firebase's hosted page, which doesn't
+enforce the app's password rules. The email-verification template can point at the same
+route — it handles `mode=verifyEmail` too — or stay on the default page.
 
 ## Testing
 

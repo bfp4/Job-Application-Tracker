@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { friendlyAuthError } from "@/lib/authErrors";
+import { friendlyAuthError, isBadCredentialError } from "@/lib/authErrors";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,12 +16,14 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resendNote, setResendNote] = useState<string | null>(null);
+  const [badCredentials, setBadCredentials] = useState(false);
 
   async function handleEmailLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setNeedsVerification(false);
     setResendNote(null);
+    setBadCredentials(false);
     setSubmitting(true);
     try {
       const { user } = await signIn(email, password);
@@ -39,6 +41,7 @@ export default function LoginPage() {
       }
       router.push("/dashboard");
     } catch (err) {
+      setBadCredentials(isBadCredentialError(err));
       setError(friendlyAuthError(err, "Failed to sign in."));
     } finally {
       setSubmitting(false);
@@ -80,7 +83,22 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-gray-500">Sign in to your account.</p>
 
         {error && (
-          <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+            <p>{error}</p>
+            {/* Firebase can't tell us *why* the credential was rejected without
+                leaking which emails are registered, so cover both cases: a
+                forgotten password, and a Google account that has no password. */}
+            {badCredentials && (
+              <p className="mt-2 text-red-800">
+                If you signed up with Google, use{" "}
+                <span className="font-medium">Sign in with Google</span> below — or{" "}
+                <Link href="/forgot-password" className="font-medium underline">
+                  set a password
+                </Link>{" "}
+                for this email.
+              </p>
+            )}
+          </div>
         )}
 
         {needsVerification && (
@@ -114,9 +132,17 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Password
-            </label>
+            <div className="flex items-baseline justify-between">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-xs font-medium text-gray-500 underline hover:text-gray-900"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               id="password"
               type="password"

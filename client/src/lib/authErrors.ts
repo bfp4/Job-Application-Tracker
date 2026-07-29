@@ -14,12 +14,30 @@ export function validatePassword(password: string): string | null {
   return failed ? `Password needs: ${failed.label.toLowerCase()}.` : null;
 }
 
+function errorCode(err: unknown): string {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code: unknown }).code)
+    : "";
+}
+
+const BAD_CREDENTIAL_CODES = [
+  "auth/invalid-credential",
+  "auth/wrong-password",
+  "auth/user-not-found",
+];
+
+/**
+ * True when a sign-in failed because the email/password pair was rejected. The
+ * UI uses this to offer the reset flow, which is also the only way out for
+ * someone who signed up with Google and so has no password at all.
+ */
+export function isBadCredentialError(err: unknown): boolean {
+  return BAD_CREDENTIAL_CODES.includes(errorCode(err));
+}
+
 /** Maps raw Firebase auth error codes to friendly, non-leaky copy. */
 export function friendlyAuthError(err: unknown, fallback: string): string {
-  const code =
-    typeof err === "object" && err !== null && "code" in err
-      ? String((err as { code: unknown }).code)
-      : "";
+  const code = errorCode(err);
 
   switch (code) {
     case "auth/email-already-in-use":
@@ -35,7 +53,20 @@ export function friendlyAuthError(err: unknown, fallback: string): string {
     case "auth/too-many-requests":
       return "Too many attempts. Please wait a moment and try again.";
     case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
       return "Sign-in was cancelled.";
+    case "auth/popup-blocked":
+      return "Your browser blocked the sign-in popup. Allow popups and try again.";
+    case "auth/expired-action-code":
+      return "This link has expired. Request a new one.";
+    case "auth/invalid-action-code":
+      return "This link is invalid or has already been used. Request a new one.";
+    case "auth/user-disabled":
+      return "This account has been disabled.";
+    case "auth/requires-recent-login":
+      return "For your security, please sign in again before changing your password.";
+    case "auth/user-mismatch":
+      return "That account doesn't match the one you're signed in as.";
     case "auth/network-request-failed":
       return "Network error. Check your connection and try again.";
     default:
