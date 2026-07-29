@@ -108,19 +108,19 @@ export default function CompanyInput({ value, onChange, disabled, required, id }
       />
       <CopyButton value={value} className="absolute right-1.5 top-1/2 -translate-y-1/2" />
       {isOpen && suggestions.length > 0 && (
-        <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 bg-white text-sm shadow-lg">
+        <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-surface py-1 text-sm shadow-pop">
           {suggestions.map((suggestion, index) => (
             <li key={suggestion.domain}>
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => selectSuggestion(suggestion)}
-                className={`flex w-full items-center justify-between px-3 py-2 text-left hover:bg-gray-50 ${
-                  index === highlightedIndex ? "bg-gray-50" : ""
+                className={`flex w-full items-center justify-between px-3 py-2 text-left transition hover:bg-subtle ${
+                  index === highlightedIndex ? "bg-subtle" : ""
                 }`}
               >
-                <span className="text-gray-900">{suggestion.name}</span>
-                <span className="text-xs text-gray-400">{suggestion.domain}</span>
+                <span className="font-medium text-ink">{suggestion.name}</span>
+                <span className="text-xs text-muted">{suggestion.domain}</span>
               </button>
             </li>
           ))}

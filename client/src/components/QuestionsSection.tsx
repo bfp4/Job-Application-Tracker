@@ -2,17 +2,28 @@
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
-import CollapsibleCard from "@/components/CollapsibleCard";
 import { CopyField } from "@/components/CopyButton";
-import { inputClassName } from "@/lib/ui";
+import { AiError } from "@/components/ai";
+import {
+  btnAiSm,
+  btnAiSoft,
+  btnPrimarySm,
+  cardClassName,
+  inputClassName,
+  labelClassName,
+} from "@/lib/ui";
+import { IconNote, IconSparkles, IconTrash } from "@/components/icons";
 import type { ApplicationQuestion } from "@/lib/types";
 
 /**
- * "Application questions" card on the application detail page: questions the
- * application form asks (e.g. "What project are you most proud of?"), each
- * with an answer that can be drafted by AI from the resume + posting + notes,
- * then edited by hand. Mutations patch the parent page's application state
- * through `setQuestions` instead of re-fetching.
+ * "Application questions": the essay questions an employer's form asks, each
+ * with an answer that can be AI-drafted from the resume, posting and notes,
+ * then edited by hand.
+ *
+ * Two distinct AI actions, and which one is primary flips with the state of
+ * the box: with nothing written, drafting from scratch leads; once the user
+ * has words down, refining *their* draft leads, because replacing what someone
+ * wrote should never be the path of least resistance.
  */
 export default function QuestionsSection({
   applicationId,
@@ -42,10 +53,9 @@ export default function QuestionsSection({
   }
 
   async function handleSaveAnswer(question: ApplicationQuestion, answer: string) {
-    const body = { answer: answer.trim() === "" ? null : answer };
     const res = await apiFetch(`/api/questions/${question.id}`, {
       method: "PATCH",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ answer: answer.trim() === "" ? null : answer }),
     });
     if (!res.ok) throw new Error("Failed to save answer.");
     const { question: updated } = (await res.json()) as { question: ApplicationQuestion };
@@ -66,9 +76,7 @@ export default function QuestionsSection({
       question?: ApplicationQuestion;
       error?: string;
     };
-    if (!res.ok) {
-      throw new Error(data.error ?? "Failed to draft an answer.");
-    }
+    if (!res.ok) throw new Error(data.error ?? "Failed to draft an answer.");
     if (data.question) replaceQuestion(data.question);
   }
 
@@ -81,44 +89,48 @@ export default function QuestionsSection({
   const answered = questions.filter((q) => (q.answer ?? "").trim() !== "").length;
 
   return (
-    <CollapsibleCard
-      storageKey="questions"
-      title="Application questions"
-      meta={
-        questions.length === 0
-          ? "None yet"
-          : `${answered} of ${questions.length} answered`
-      }
-    >
-      <p className="text-sm text-gray-500">
-        Paste questions from the application form. Let AI draft an answer from your
-        resume, this posting, and your notes — or write your own rough draft and have
-        AI refine it while keeping your ideas and voice.
-      </p>
+    <section className={cardClassName}>
+      <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div>
+          <h2 className="text-base font-bold text-ink">Application questions</h2>
+          <p className="mt-1 text-sm text-muted">
+            Paste the questions this form asks. Draft an answer from your resume and
+            this posting, or write a rough one and have it refined in your own voice.
+          </p>
+        </div>
+        {questions.length > 0 && (
+          <span className="shrink-0 rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-muted">
+            {answered} of {questions.length} answered
+          </span>
+        )}
+      </div>
 
-      {error && (
-        <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
-      )}
+      <div className="space-y-4 border-t border-border p-5">
+        {error && <AiError message={error} />}
 
-      {questions.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-500">No questions yet.</p>
-      ) : (
-        <ul className="mt-4 space-y-4">
-          {questions.map((question) => (
-            <QuestionItem
-              key={question.id}
-              question={question}
-              onSaveAnswer={handleSaveAnswer}
-              onDraft={handleDraft}
-              onDelete={handleDelete}
-              setError={setError}
-            />
-          ))}
-        </ul>
-      )}
+        {questions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+            <IconNote size={26} className="mx-auto text-border" strokeWidth={1.5} />
+            <p className="mt-2 text-sm font-medium text-muted">No questions yet.</p>
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {questions.map((question) => (
+              <QuestionItem
+                key={question.id}
+                question={question}
+                onSaveAnswer={handleSaveAnswer}
+                onDraft={handleDraft}
+                onDelete={handleDelete}
+                setError={setError}
+              />
+            ))}
+          </ul>
+        )}
 
-      <AddQuestionForm onAdd={handleAdd} setError={setError} />
-    </CollapsibleCard>
+        <AddQuestionForm onAdd={handleAdd} setError={setError} />
+      </div>
+    </section>
   );
 }
 
@@ -182,24 +194,22 @@ function QuestionItem({
     }
   }
 
-  const primaryButtonClass =
-    "rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50";
+  const hasAnswer = answerDraft.trim() !== "";
 
   return (
-    <li className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+    <li className="rounded-xl border border-border bg-subtle/40 p-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-gray-900">{question.question}</p>
+        <p className="text-sm font-semibold text-ink">{question.question}</p>
         <button
           type="button"
+          aria-label="Remove question"
           onClick={() => {
             setError(null);
-            void onDelete(question.id).catch(() =>
-              setError("Failed to remove question.")
-            );
+            void onDelete(question.id).catch(() => setError("Failed to remove question."));
           }}
-          className="shrink-0 text-sm text-gray-400 hover:text-red-600"
+          className="shrink-0 rounded-lg p-1.5 text-muted transition hover:bg-danger-soft hover:text-danger"
         >
-          Remove
+          <IconTrash size={16} />
         </button>
       </div>
 
@@ -209,23 +219,25 @@ function QuestionItem({
             value={answerDraft}
             onChange={(e) => setAnswerDraft(e.target.value)}
             onBlur={handleBlur}
-            rows={answerDraft ? 6 : 3}
+            rows={hasAnswer ? 6 : 3}
             disabled={drafting}
-            className={`w-full bg-white pr-9 ${inputClassName}`}
+            aria-label={`Answer to: ${question.question}`}
             placeholder="Your answer — write it yourself or draft it with AI."
+            className={`w-full pr-9 ${inputClassName}`}
           />
         </CopyField>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {answerDraft.trim() !== "" && (
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        {hasAnswer && (
           <button
             type="button"
             onClick={() => handleDraftClick("refine")}
             disabled={drafting}
-            title="Improve the current answer with AI — keeps its ideas and voice."
-            className={primaryButtonClass}
+            title="Improve the current answer — keeps its ideas and voice."
+            className={btnAiSm}
           >
+            <IconSparkles size={15} />
             {draftingMode === "refine" ? "Refining…" : "Refine my draft"}
           </button>
         )}
@@ -234,22 +246,19 @@ function QuestionItem({
           onClick={() => handleDraftClick("new")}
           disabled={drafting}
           title="Write a completely new answer from your resume, this posting, and your notes."
-          className={
-            answerDraft.trim() !== ""
-              ? "rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-              : primaryButtonClass
-          }
+          className={hasAnswer ? btnAiSoft : btnAiSm}
         >
+          <IconSparkles size={15} />
           {draftingMode === "new"
             ? "Drafting…"
-            : answerDraft.trim() !== ""
+            : hasAnswer
               ? "New draft"
               : "Draft with AI"}
         </button>
         {drafting && (
-          <span className="text-sm text-gray-500">
+          <span className="text-xs font-medium text-ai">
             {draftingMode === "refine"
-              ? "Refining your draft with your resume and this posting…"
+              ? "Refining with your resume and this posting…"
               : "Reading your resume and this posting…"}
           </span>
         )}
@@ -285,12 +294,18 @@ function AddQuestionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-4 flex items-end gap-2">
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-end"
+    >
       <div className="flex-1">
-        <label className="block text-xs font-medium text-gray-700">Question</label>
-        <div className="mt-1">
+        <label htmlFor="newQuestion" className={labelClassName}>
+          Add a question
+        </label>
+        <div className="mt-1.5">
           <CopyField value={question}>
             <input
+              id="newQuestion"
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
@@ -303,7 +318,7 @@ function AddQuestionForm({
       <button
         type="submit"
         disabled={submitting || !question.trim()}
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        className={btnPrimarySm}
       >
         {submitting ? "Adding…" : "Add"}
       </button>

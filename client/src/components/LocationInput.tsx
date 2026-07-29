@@ -103,14 +103,14 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
           {value.map((loc) => (
             <li
               key={loc}
-              className="flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700"
+              className="flex items-center gap-1 rounded-full bg-subtle px-2.5 py-1 text-xs font-medium text-ink ring-1 ring-inset ring-border"
             >
               {loc}
               {!disabled && (
                 <button
                   type="button"
                   onClick={() => removeLocation(loc)}
-                  className="text-gray-400 hover:text-gray-700"
+                  className="text-muted transition hover:text-danger"
                   aria-label={`Remove ${loc}`}
                 >
                   ×
@@ -135,7 +135,7 @@ export default function LocationInput({ value, onChange, disabled, id }: Locatio
         }
         className={`mt-2 w-full ${inputClassName}`}
       />
-      <p className="mt-1 text-xs text-gray-400">
+      <p className="mt-1.5 text-xs text-muted">
         Press Enter to add. You can add more than one location.
       </p>
     </div>

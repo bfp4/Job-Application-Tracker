@@ -3,12 +3,12 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import AuthLayout from "@/components/AuthLayout";
+import PasswordRules from "@/components/PasswordRules";
 import { useAuth } from "@/context/AuthContext";
-import {
-  PASSWORD_RULES,
-  validatePassword,
-  friendlyAuthError,
-} from "@/lib/authErrors";
+import { validatePassword, friendlyAuthError } from "@/lib/authErrors";
+import { btnPrimary, btnSecondary, inputClassName, labelClassName } from "@/lib/ui";
+import { IconGoogle, IconMail } from "@/components/icons";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -56,115 +56,105 @@ export default function SignUpPage() {
 
   if (sentTo) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-        <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-gray-900">Confirm your email</h1>
-          <p className="mt-2 text-sm text-gray-600">
+      <AuthLayout
+        title="Confirm your email"
+        subtitle="One more step before you can sign in."
+      >
+        <div className="rounded-2xl border border-border bg-surface p-5 text-center shadow-card">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
+            <IconMail size={22} />
+          </span>
+          <p className="mt-3 text-sm text-muted">
             We sent a verification link to{" "}
-            <span className="font-medium text-gray-900">{sentTo}</span>. Click it to
+            <span className="font-semibold text-ink">{sentTo}</span>. Click it to
             activate your account, then log in.
           </p>
-          <Link
-            href="/login"
-            className="mt-6 block w-full rounded-md bg-gray-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-800"
-          >
+          <Link href="/login" className={`${btnPrimary} mt-5 w-full`}>
             Go to login
           </Link>
-          <p className="mt-4 text-center text-xs text-gray-500">
-            Didn&apos;t get it? Check your spam folder, or you can resend the link
-            from the login page.
+          <p className="mt-4 text-xs text-muted">
+            Didn&apos;t get it? Check your spam folder, or resend the link from the
+            login page.
           </p>
         </div>
-      </main>
+      </AuthLayout>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-gray-900">Create account</h1>
-        <p className="mt-1 text-sm text-gray-500">Start tracking your job applications.</p>
-
-        {error && (
-          <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
-        )}
-
-        <form onSubmit={handleEmailSignUp} className="mt-6 space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
-            />
-            <ul className="mt-2 space-y-1">
-              {PASSWORD_RULES.map((rule) => {
-                const met = rule.test(password);
-                return (
-                  <li
-                    key={rule.label}
-                    className={`flex items-center gap-1.5 text-xs ${
-                      met ? "text-green-600" : "text-gray-400"
-                    }`}
-                  >
-                    <span aria-hidden>{met ? "✓" : "○"}</span>
-                    {rule.label}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          >
-            {submitting ? "Creating account…" : "Sign up"}
-          </button>
-        </form>
-
-        <div className="my-4 flex items-center gap-3">
-          <div className="h-px flex-1 bg-gray-200" />
-          <span className="text-xs uppercase text-gray-400">or</span>
-          <div className="h-px flex-1 bg-gray-200" />
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGoogleSignUp}
-          disabled={submitting}
-          className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          Sign up with Google
-        </button>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
+    <AuthLayout
+      title="Create your account"
+      subtitle="Start tracking your job applications."
+      footer={
+        <>
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-gray-900 underline">
+          <Link href="/login" className="font-semibold text-brand hover:underline">
             Log in
           </Link>
-        </p>
+        </>
+      }
+    >
+      {error && (
+        <div className="mb-4 rounded-xl border border-danger-ring bg-danger-soft p-3.5 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={handleGoogleSignUp}
+        disabled={submitting}
+        className={`${btnSecondary} w-full`}
+      >
+        <IconGoogle size={18} />
+        Continue with Google
+      </button>
+
+      <div className="my-5 flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+          or
+        </span>
+        <div className="h-px flex-1 bg-border" />
       </div>
-    </main>
+
+      <form onSubmit={handleEmailSignUp} className="space-y-4">
+        <div>
+          <label htmlFor="email" className={labelClassName}>
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className={`mt-1.5 w-full ${inputClassName}`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={labelClassName}>
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            required
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={`mt-1.5 w-full ${inputClassName}`}
+          />
+          <PasswordRules password={password} />
+        </div>
+
+        <button type="submit" disabled={submitting} className={`${btnPrimary} w-full`}>
+          {submitting ? "Creating account…" : "Create account"}
+        </button>
+      </form>
+    </AuthLayout>
   );
 }

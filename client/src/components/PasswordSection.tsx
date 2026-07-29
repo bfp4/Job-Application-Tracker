@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import PasswordRules from "@/components/PasswordRules";
 import { useAuth } from "@/context/AuthContext";
+import { validatePassword, friendlyAuthError } from "@/lib/authErrors";
 import {
-  PASSWORD_RULES,
-  validatePassword,
-  friendlyAuthError,
-} from "@/lib/authErrors";
+  btnPrimarySm,
+  cardClassName,
+  inputClassName,
+  labelClassName,
+} from "@/lib/ui";
 
 /**
  * Lets a signed-in user change their password — or, for someone who created
@@ -59,30 +62,31 @@ export default function PasswordSection() {
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-900">
+    <section className={`${cardClassName} p-5`}>
+      <h2 className="text-base font-bold text-ink">
         {hasPasswordProvider ? "Change password" : "Set a password"}
       </h2>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-muted">
         {hasPasswordProvider
           ? "Enter your current password, then choose a new one."
           : "You signed in with Google. Add a password so you can also sign in with your email — your Google sign-in keeps working either way."}
       </p>
 
       {error && (
-        <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="mt-4 rounded-xl border border-danger-ring bg-danger-soft p-3.5 text-sm font-medium text-red-700">
+          {error}
+        </div>
       )}
       {note && (
-        <div className="mt-4 rounded-md bg-green-50 p-3 text-sm text-green-700">{note}</div>
+        <div className="mt-4 rounded-xl border border-success-ring bg-success-soft p-3.5 text-sm font-medium text-emerald-700">
+          {note}
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="mt-4 max-w-xs space-y-4">
         {hasPasswordProvider && (
           <div>
-            <label
-              htmlFor="current-password"
-              className="block text-sm font-medium text-gray-700"
-            >
+            <label htmlFor="current-password" className={labelClassName}>
               Current password
             </label>
             <input
@@ -92,16 +96,13 @@ export default function PasswordSection() {
               autoComplete="current-password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+              className={`mt-1.5 w-full ${inputClassName}`}
             />
           </div>
         )}
 
         <div>
-          <label
-            htmlFor="new-password"
-            className="block text-sm font-medium text-gray-700"
-          >
+          <label htmlFor="new-password" className={labelClassName}>
             New password
           </label>
           <input
@@ -111,31 +112,13 @@ export default function PasswordSection() {
             autoComplete="new-password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+            className={`mt-1.5 w-full ${inputClassName}`}
           />
-          <ul className="mt-2 space-y-1">
-            {PASSWORD_RULES.map((rule) => {
-              const met = rule.test(newPassword);
-              return (
-                <li
-                  key={rule.label}
-                  className={`flex items-center gap-1.5 text-xs ${
-                    met ? "text-green-600" : "text-gray-400"
-                  }`}
-                >
-                  <span aria-hidden>{met ? "✓" : "○"}</span>
-                  {rule.label}
-                </li>
-              );
-            })}
-          </ul>
+          <PasswordRules password={newPassword} />
         </div>
 
         <div>
-          <label
-            htmlFor="confirm-password"
-            className="block text-sm font-medium text-gray-700"
-          >
+          <label htmlFor="confirm-password" className={labelClassName}>
             Confirm password
           </label>
           <input
@@ -145,15 +128,11 @@ export default function PasswordSection() {
             autoComplete="new-password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+            className={`mt-1.5 w-full ${inputClassName}`}
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-        >
+        <button type="submit" disabled={submitting} className={btnPrimarySm}>
           {submitting
             ? "Saving…"
             : hasPasswordProvider
@@ -162,7 +141,7 @@ export default function PasswordSection() {
         </button>
 
         {!hasPasswordProvider && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             You&apos;ll be asked to confirm with Google first.
           </p>
         )}

@@ -1,3 +1,57 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink antialiased;
+  }
+
+  /* The spec's type ramp: headings 700, body 500, labels 600. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-bold tracking-[-0.01em];
+  }
+
+  label {
+    @apply font-semibold;
+  }
+
+  /* Keyboard focus is always visible; pointer focus never draws a ring. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand/40 ring-offset-2 ring-offset-canvas;
+  }
+
+  /* Native date inputs render their own indicator; make it match the palette. */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    @apply cursor-pointer opacity-60 hover:opacity-100;
+  }
+}
+
+@layer utilities {
+  /* Horizontal scrollers (tab bars, filter rows) without a visible track. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Respect a user's reduced-motion preference for everything we animate. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -6,6 +6,13 @@ import PasswordSection from "@/components/PasswordSection";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
+import {
+  btnPrimarySm,
+  cardClassName,
+  labelClassName,
+  selectClassName,
+} from "@/lib/ui";
+import { IconAlert, IconFile, IconSparkles, IconUpload } from "@/components/icons";
 import type {
   BaseResume,
   CareerSpecialization,
@@ -22,6 +29,7 @@ export default function SettingsPage() {
     SpecializationOption[]
   >([]);
   const [savingSpecialization, setSavingSpecialization] = useState(false);
+  const [specializationSaved, setSpecializationSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +58,17 @@ export default function SettingsPage() {
     }
   }
 
+  useEffect(() => {
+    if (authLoading || !user) return;
+    void loadData();
+  }, [authLoading, user]);
+
   async function handleSpecializationChange(value: CareerSpecialization) {
     const previous = settings;
     // Optimistic: reflect the choice immediately, roll back on failure.
     setSettings((s) => (s ? { ...s, careerSpecialization: value } : s));
     setSavingSpecialization(true);
+    setSpecializationSaved(false);
     setError(null);
     try {
       const res = await apiFetch("/api/user/me", {
@@ -64,6 +78,8 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Failed to save specialization.");
       setSettings(data.user as UserSettings);
+      setSpecializationSaved(true);
+      setTimeout(() => setSpecializationSaved(false), 2000);
     } catch (err) {
       setSettings(previous);
       setError(err instanceof Error ? err.message : "Failed to save specialization.");
@@ -72,14 +88,21 @@ export default function SettingsPage() {
     }
   }
 
-  useEffect(() => {
-    if (authLoading || !user) return;
-    void loadData();
-  }, [authLoading, user]);
-
   async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Replacing the resume invalidates every generated document, so this is
+    // worth a confirmation rather than a silent swap.
+    if (
+      baseResume &&
+      !confirm(
+        "Replace your resume? Tailored resumes, cover letters and tips already generated will be marked out of date, and you'll be able to regenerate them."
+      )
+    ) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -103,88 +126,148 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your resume and how it&apos;s tailored to each job.
+      <div className="max-w-3xl space-y-5">
+        <header>
+          <h1 className="text-2xl font-bold text-ink sm:text-[28px]">Settings</h1>
+          <p className="mt-1 text-sm font-medium text-muted">
+            Your resume and how the AI tailors it to each job.
           </p>
-        </div>
+        </header>
 
-        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded-xl border border-danger-ring bg-danger-soft px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        )}
 
         {loading ? (
-          <p className="text-sm text-gray-500">Loading…</p>
+          <div className="space-y-4" aria-hidden>
+            <div className={`${cardClassName} h-44 animate-pulse bg-subtle`} />
+            <div className={`${cardClassName} h-40 animate-pulse bg-subtle`} />
+          </div>
         ) : (
-          <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">Base resume</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Upload a PDF resume. It will be stored securely.
-            </p>
+          <>
+            <section className={`${cardClassName} p-5`}>
+              <h2 className="text-base font-bold text-ink">Base resume</h2>
+              <p className="mt-1 text-sm text-muted">
+                A PDF, up to 10MB. Everything the AI writes is built from it — so this
+                one file powers the tailored resume, cover letter, tips, drafted answers
+                and LinkedIn notes.
+              </p>
 
-            <div className="mt-4 flex items-center gap-3">
+              {baseResume ? (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-subtle/50 p-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface text-brand ring-1 ring-inset ring-border">
+                    <IconFile size={18} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink">Resume on file</p>
+                    <p className="text-xs text-muted">
+                      Uploaded {formatDate(baseResume.createdAt)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className={btnPrimarySm}
+                  >
+                    <IconUpload size={15} />
+                    {uploading ? "Uploading…" : "Replace"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="mt-4 flex w-full flex-col items-center rounded-xl border border-dashed border-border px-4 py-8 text-center transition hover:border-brand hover:bg-brand-soft/40"
+                >
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
+                    <IconUpload size={20} />
+                  </span>
+                  <span className="mt-3 text-sm font-semibold text-ink">
+                    {uploading ? "Uploading…" : "Upload your resume"}
+                  </span>
+                  <span className="mt-0.5 text-xs text-muted">PDF, up to 10MB</span>
+                </button>
+              )}
+
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="application/pdf"
                 onChange={handleFileSelected}
                 disabled={uploading}
-                className="text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-800"
+                className="sr-only"
+                aria-label="Resume PDF"
               />
-              {uploading && <span className="text-sm text-gray-500">Uploading…</span>}
-            </div>
 
-            {baseResume ? (
-              <div className="mt-6 space-y-1 border-t border-gray-100 pt-4">
-                <p className="text-sm text-gray-700">Resume on file.</p>
-                <p className="text-xs text-gray-500">Uploaded {formatDate(baseResume.createdAt)}</p>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-gray-500">No resume uploaded yet.</p>
-            )}
-          </section>
-        )}
-
-        {!loading && settings && (
-          <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">Career specialization</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Everything the AI writes for you follows the conventions of this field —
-              tailored resumes, cover letters, resume tips, LinkedIn notes, and
-              application answers. It decides which achievements to foreground, which
-              keywords matter, and what advice is worth giving.
-            </p>
-
-            <div className="mt-4 max-w-xs">
-              <label
-                htmlFor="specialization"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Field
-              </label>
-              <select
-                id="specialization"
-                value={settings.careerSpecialization}
-                onChange={(e) =>
-                  handleSpecializationChange(e.target.value as CareerSpecialization)
-                }
-                disabled={savingSpecialization}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 disabled:opacity-50"
-              >
-                {specializationOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              {savingSpecialization && (
-                <p className="mt-2 text-xs text-gray-500">Saving…</p>
+              {!baseResume && (
+                <p className="mt-3 flex items-start gap-2 text-xs text-muted">
+                  <IconAlert size={14} className="mt-px shrink-0 text-amber-600" />
+                  Until you add one, the five AI features stay locked.
+                </p>
               )}
-            </div>
-          </section>
-        )}
+            </section>
 
-        <PasswordSection />
+            {settings && (
+              <section className={`${cardClassName} p-5`}>
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ai-soft text-ai ring-1 ring-inset ring-ai-ring">
+                    <IconSparkles size={18} />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-ink">
+                      Career specialization
+                    </h2>
+                    <p className="mt-1 text-sm text-muted">
+                      Everything the AI writes follows the conventions of this field —
+                      which achievements to foreground, which keywords matter, and what
+                      advice is worth giving.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 max-w-xs">
+                  <label htmlFor="specialization" className={labelClassName}>
+                    Field
+                  </label>
+                  <select
+                    id="specialization"
+                    value={settings.careerSpecialization}
+                    onChange={(e) =>
+                      handleSpecializationChange(e.target.value as CareerSpecialization)
+                    }
+                    disabled={savingSpecialization}
+                    className={`mt-1.5 w-full ${selectClassName}`}
+                  >
+                    {specializationOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 h-4 text-xs font-semibold text-emerald-600">
+                    {savingSpecialization
+                      ? ""
+                      : specializationSaved
+                        ? "Saved"
+                        : ""}
+                  </p>
+                </div>
+
+                <p className="text-xs text-muted">
+                  Changing this affects documents you generate from now on. Anything
+                  already written keeps the wording it was given — regenerate it to pick
+                  up the new field.
+                </p>
+              </section>
+            )}
+
+            <PasswordSection />
+          </>
+        )}
       </div>
     </AppShell>
   );

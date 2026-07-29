@@ -1,11 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
 import { focusSections } from "@/lib/resumeTipsFocus";
+import { btnAi, btnAiSoft } from "@/lib/ui";
+import {
+  AiDiff,
+  AiError,
+  AiPanel,
+  AiProgress,
+  AiProvenance,
+  AiSkeleton,
+  AiStateChip,
+  NoResumeNotice,
+  type AiState,
+} from "@/components/ai";
+import { IconRefresh, IconSparkles } from "@/components/icons";
 import type { ResumeAnalysis } from "@/lib/types";
 
 interface TipsResponse {
@@ -14,27 +24,33 @@ interface TipsResponse {
   hasResume: boolean;
 }
 
+const STEPS = [
+  "Reading your resume",
+  "Reading this posting",
+  "Comparing them against your field",
+  "Writing your tips",
+];
+
 /**
- * "Resume tips" card on the application detail page. Fetches the saved
- * analysis, and offers generate/regenerate — the button is disabled while
- * the saved analysis is still current for the user's resume + this posting
- * (the server enforces the same rule with a 409).
+ * "Resume tips" — coaching, not an artefact: what to study, what's missing,
+ * what to highlight. Read-only by design; the two editable documents live in
+ * their own tabs.
+ *
+ * Generation is gated server-side while the saved analysis still matches the
+ * resume and posting it came from, and the button mirrors that with a 409 as
+ * the backstop.
  */
 export default function ResumeTipsSection({ applicationId }: { applicationId: string }) {
   const [data, setData] = useState<TipsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const card = useCollapsible("resume-tips");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<TipsResponse>(
-        `/api/applications/${applicationId}/resume-tips`
-      );
-      setData(res);
+      setData(await apiJson<TipsResponse>(`/api/applications/${applicationId}/resume-tips`));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load resume tips.");
     } finally {
@@ -49,9 +65,6 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
   async function handleGenerate() {
     setGenerating(true);
     setError(null);
-    // The button lives in the header, so it can be pressed while collapsed —
-    // open up so progress and results are visible.
-    card.setOpen(true);
     try {
       const res = await apiFetch(`/api/applications/${applicationId}/resume-tips`, {
         method: "POST",
@@ -60,9 +73,8 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
         error?: string;
       };
 
-      // 409 means this tab's view was stale (already regenerated elsewhere,
-      // or a generation is in flight) — sync to the server's state instead
-      // of surfacing an error.
+      // 409 means this view was stale (already regenerated elsewhere, or a run
+      // is in flight) — sync to the server instead of surfacing an error.
       if (res.status === 409) {
         await load();
         return;
@@ -85,13 +97,13 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
 
   const analysis = data?.analysis ?? null;
   const content = analysis?.content ?? null;
+  const state = resolveState(loading, generating, data);
 
   return (
-    <CollapsibleCard
-      storageKey="resume-tips"
-      state={card}
+    <AiPanel
       title="Resume tips"
-      meta={summarizeState(loading, generating, data)}
+      description="How your resume reads against this posting — what to study, what's missing, and what to lead with."
+      status={<AiStateChip state={state} />}
       actions={
         data?.hasResume && (
           <button
@@ -103,52 +115,47 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
                 ? "Already up to date — update your resume or this posting to run a new analysis."
                 : undefined
             }
-            className="shrink-0 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className={analysis ? btnAiSoft : btnAi}
           >
-            {generating ? "Analyzing…" : analysis ? "Regenerate tips" : "Get resume tips"}
+            {analysis ? <IconRefresh size={15} /> : <IconSparkles size={16} />}
+            {generating ? "Analyzing…" : analysis ? "Regenerate" : "Get resume tips"}
           </button>
         )
       }
     >
-      <p className="text-sm text-gray-500">
-        AI analysis of your resume against this posting — what to study, what&apos;s
-        missing, and what to highlight.
-      </p>
+      {error && (
+        <div className="mb-4">
+          <AiError message={error} />
+        </div>
+      )}
 
-      {error && <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-
-      {loading && <p className="mt-3 text-sm text-gray-500">Loading…</p>}
+      {loading && <AiSkeleton lines={6} />}
 
       {!loading && data && !data.hasResume && (
-        <p className="mt-3 text-sm text-gray-500">
-          Upload your resume in{" "}
-          <Link href="/settings" className="font-medium text-gray-900 underline">
-            Settings
-          </Link>{" "}
-          to get tailored tips for this job.
-        </p>
+        <NoResumeNotice action="Resume tips" />
       )}
 
-      {generating && (
-        <p className="mt-3 text-sm text-gray-500">
-          Reading your resume and this posting… this can take up to a minute.
-        </p>
-      )}
+      {generating && !content && <AiProgress steps={STEPS} />}
 
       {!loading && content && (
-        <div className="mt-4 space-y-5 border-t border-gray-100 pt-4">
-          <p className="text-sm text-gray-700">{content.summary}</p>
+        <div className={`space-y-6 ${generating ? "opacity-50" : ""}`}>
+          {generating && <AiProgress steps={STEPS} />}
 
-          {/* Which sections appear here depends on the career specialization
-              the analysis was generated for (technologies for engineers,
-              licences for nurses, and so on). */}
+          <p className="text-sm leading-relaxed text-ink">{content.summary}</p>
+
+          {/* Which sections appear depends on the career specialization the
+              analysis was generated for — technologies for engineers, licences
+              for nurses — so headings are never hard-coded here. */}
           {focusSections(content).map((section) => (
             <TipGroup key={section.key} title={section.title}>
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {section.items.map((item) => (
-                  <li key={item.name} className="text-sm text-gray-600">
-                    <span className="font-medium text-gray-900">{item.name}</span> —{" "}
-                    {item.reason}
+                  <li key={item.name} className="flex gap-2.5 text-sm">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-ai" />
+                    <span className="text-muted">
+                      <span className="font-semibold text-ink">{item.name}</span> —{" "}
+                      {item.reason}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -163,17 +170,16 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
 
           {content.bulletPointSuggestions.length > 0 && (
             <TipGroup title="Bullet points to add or change">
-              <ul className="space-y-3">
+              <div className="space-y-2.5">
                 {content.bulletPointSuggestions.map((suggestion, index) => (
-                  <li key={index} className="rounded-md bg-gray-50 p-3 text-sm">
-                    {suggestion.current && (
-                      <p className="text-gray-500 line-through">{suggestion.current}</p>
-                    )}
-                    <p className="text-gray-900">{suggestion.suggested}</p>
-                    <p className="mt-1 text-xs text-gray-500">{suggestion.reason}</p>
-                  </li>
+                  <AiDiff
+                    key={index}
+                    before={suggestion.current}
+                    after={suggestion.suggested}
+                    reason={suggestion.reason}
+                  />
                 ))}
-              </ul>
+              </div>
             </TipGroup>
           )}
 
@@ -190,46 +196,53 @@ export default function ResumeTipsSection({ applicationId }: { applicationId: st
           )}
 
           {analysis && (
-            <p className="text-xs text-gray-400">
-              Generated {formatDate(analysis.updatedAt)}
-              {data?.upToDate
-                ? " · Up to date for your current resume and this posting."
-                : " · Your resume or this posting has changed since — you can regenerate."}
-            </p>
+            <AiProvenance
+              generatedAt={analysis.updatedAt}
+              upToDate={data?.upToDate ?? true}
+            />
           )}
         </div>
       )}
-    </CollapsibleCard>
+
+      {!loading && !content && data?.hasResume && !generating && (
+        <p className="text-sm text-muted">
+          Nothing generated yet. Run the analysis to see how this posting lines up
+          against your resume.
+        </p>
+      )}
+    </AiPanel>
   );
 }
 
-/** One-line status for the card header, readable while the card is collapsed. */
-function summarizeState(
+function resolveState(
   loading: boolean,
   generating: boolean,
   data: TipsResponse | null
-): string | undefined {
-  if (generating) return "Analyzing…";
-  if (loading || !data) return undefined;
-  if (!data.hasResume) return "No resume uploaded";
-  if (!data.analysis) return "Not generated yet";
-  return data.upToDate ? "Up to date" : "Posting or resume changed";
+): AiState {
+  if (generating) return "working";
+  if (loading || !data) return "loading";
+  if (!data.hasResume) return "no-resume";
+  if (!data.analysis) return "not-generated";
+  return data.upToDate ? "up-to-date" : "stale";
 }
 
 function TipGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-gray-900">{title}</h3>
-      <div className="mt-2">{children}</div>
+      <h3 className="text-sm font-bold text-ink">{title}</h3>
+      <div className="mt-2.5">{children}</div>
     </div>
   );
 }
 
 function BulletList({ items }: { items: string[] }) {
   return (
-    <ul className="list-disc space-y-1 pl-5 text-sm text-gray-600">
+    <ul className="space-y-2">
       {items.map((item, index) => (
-        <li key={index}>{item}</li>
+        <li key={index} className="flex gap-2.5 text-sm text-muted">
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border" />
+          {item}
+        </li>
       ))}
     </ul>
   );

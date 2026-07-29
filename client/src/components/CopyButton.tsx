@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { btnSecondarySm } from "@/lib/ui";
 
 /**
  * Icon button that copies `value` to the clipboard and flashes a checkmark
@@ -52,8 +53,8 @@ export default function CopyButton({
       aria-label="Copy to clipboard"
       className={
         label
-          ? `inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 ${className}`
-          : `rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 ${className}`
+          ? `${btnSecondarySm} ${className}`
+          : `rounded-md p-1 text-muted transition hover:bg-subtle hover:text-ink ${className}`
       }
     >
       {copied ? (
@@ -62,7 +63,7 @@ export default function CopyButton({
           fill="none"
           stroke="currentColor"
           strokeWidth={2}
-          className="h-4 w-4 text-green-600"
+          className="h-4 w-4 text-emerald-600"
           aria-hidden="true"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />

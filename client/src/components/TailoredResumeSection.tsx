@@ -2,9 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { btnAi, btnAiSoft, btnSecondarySm, inputClassName } from "@/lib/ui";
+import {
+  AiError,
+  AiPanel,
+  AiProgress,
+  AiProvenance,
+  AiSkeleton,
+  AiStateChip,
+  NoResumeNotice,
+  type AiState,
+} from "@/components/ai";
+import {
+  IconDownload,
+  IconPencil,
+  IconRefresh,
+  IconSparkles,
+} from "@/components/icons";
 import type { TailoredResume, TailoredResumeContent } from "@/lib/types";
 
 interface TailoredResponse {
@@ -13,29 +28,39 @@ interface TailoredResponse {
   hasResume: boolean;
 }
 
+const STEPS = [
+  "Reading your resume",
+  "Reading this posting",
+  "Reordering for what this role wants",
+  "Rewriting your bullets",
+];
+
 /**
- * "Tailored resume" card on the application detail page. Generates a resume
- * rewritten for this posting (rephrase/reorder only — the server never invents
- * facts), lets the user review each change and edit the wording, and downloads
- * a PDF. Separate from Resume tips: tips is analysis, this is the artifact.
+ * "Tailored resume" — the artefact, as opposed to the tips tab's analysis.
+ * The server rephrases and reorders the base resume for this posting and never
+ * invents facts, so every changed bullet is shown against its original.
  */
-export default function TailoredResumeSection({ applicationId }: { applicationId: string }) {
+export default function TailoredResumeSection({
+  applicationId,
+}: {
+  applicationId: string;
+}) {
   const [data, setData] = useState<TailoredResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TailoredResumeContent | null>(null);
-  const card = useCollapsible("tailored-resume");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<TailoredResponse>(
-        `/api/applications/${applicationId}/tailored-resume`
+      setData(
+        await apiJson<TailoredResponse>(
+          `/api/applications/${applicationId}/tailored-resume`
+        )
       );
-      setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tailored resume.");
     } finally {
@@ -50,9 +75,7 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
   async function handleGenerate(force = false) {
     if (data?.tailored?.edited && !force) {
       if (
-        !confirm(
-          "You've edited this resume. Regenerating will replace your edits. Continue?"
-        )
+        !confirm("You've edited this resume. Regenerating will replace your edits. Continue?")
       ) {
         return;
       }
@@ -61,9 +84,6 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
 
     setGenerating(true);
     setError(null);
-    // The button lives in the header, so it can be pressed while collapsed —
-    // open up so progress and the result are visible.
-    card.setOpen(true);
     try {
       const res = await apiFetch(
         `/api/applications/${applicationId}/tailored-resume${force ? "?force=1" : ""}`,
@@ -75,8 +95,8 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
       };
 
       if (res.status === 409) {
-        // Edited-and-not-forced: ask, then retry with force. Otherwise the
-        // view was simply stale — sync to the server's state.
+        // Edited-and-not-forced: ask, then retry. Otherwise the view was simply
+        // stale — sync to the server's state.
         if (body.needsForce) {
           setGenerating(false);
           await handleGenerate(true);
@@ -106,11 +126,12 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
     if (!draft) return;
     setError(null);
     try {
-      const res = await apiJson<TailoredResponse>(
-        `/api/applications/${applicationId}/tailored-resume`,
-        { method: "PATCH", body: JSON.stringify({ content: draft }) }
+      setData(
+        await apiJson<TailoredResponse>(
+          `/api/applications/${applicationId}/tailored-resume`,
+          { method: "PATCH", body: JSON.stringify({ content: draft }) }
+        )
       );
-      setData(res);
       setDraft(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save edits.");
@@ -147,13 +168,22 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
   const tailored = data?.tailored ?? null;
   const content = draft ?? tailored?.content ?? null;
   const editing = draft !== null;
+  const state = resolveState(loading, generating, data);
 
   return (
-    <CollapsibleCard
-      storageKey="tailored-resume"
-      state={card}
+    <AiPanel
       title="Tailored resume"
-      meta={summarizeState(loading, generating, data)}
+      description={
+        <>
+          Your resume rewritten for this posting — same facts, retargeted wording and
+          order. Specialized for your field (set in{" "}
+          <Link href="/settings" className="font-semibold text-brand hover:underline">
+            Settings
+          </Link>
+          ) and capped at one page.
+        </>
+      }
+      status={<AiStateChip state={state} />}
       actions={
         data?.hasResume && (
           <>
@@ -162,8 +192,9 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
                 type="button"
                 onClick={handleDownload}
                 disabled={downloading}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                className={btnSecondarySm}
               >
+                <IconDownload size={15} />
                 {downloading ? "Preparing…" : "Download PDF"}
               </button>
             )}
@@ -176,62 +207,50 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
                   ? "Already up to date — update your resume or this posting to regenerate."
                   : undefined
               }
-              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className={tailored ? btnAiSoft : btnAi}
             >
+              {tailored ? <IconRefresh size={15} /> : <IconSparkles size={16} />}
               {generating ? "Building…" : tailored ? "Regenerate" : "Build tailored resume"}
             </button>
           </>
         )
       }
     >
-      <p className="text-sm text-gray-500">
-        Your resume rewritten for this posting — same facts, retargeted wording and
-        ordering. Specialized for your field (set in{" "}
-        <Link href="/settings" className="font-medium text-gray-900 underline">
-          Settings
-        </Link>
-        ) and capped at one page. Review, tweak, and download.
-      </p>
+      {error && (
+        <div className="mb-4">
+          <AiError message={error} />
+        </div>
+      )}
 
-      {error && <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-
-      {loading && <p className="mt-3 text-sm text-gray-500">Loading…</p>}
+      {loading && <AiSkeleton lines={8} />}
 
       {!loading && data && !data.hasResume && (
-        <p className="mt-3 text-sm text-gray-500">
-          Upload your resume in{" "}
-          <Link href="/settings" className="font-medium text-gray-900 underline">
-            Settings
-          </Link>{" "}
-          to build a tailored resume for this job.
-        </p>
+        <NoResumeNotice action="The tailored resume" />
       )}
 
-      {generating && (
-        <p className="mt-3 text-sm text-gray-500">
-          Rewriting your resume for this posting… this can take up to a minute.
-        </p>
-      )}
+      {generating && !content && <AiProgress steps={STEPS} />}
 
       {!loading && content && (
-        <div className="mt-4 space-y-5 border-t border-gray-100 pt-4">
+        <div className="space-y-5">
+          {generating && <AiProgress steps={STEPS} />}
+
           {tailored && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-gray-700">{content.changeNote}</p>
-              <div className="flex gap-2">
+            <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-subtle/60 p-3">
+              <p className="min-w-0 flex-1 text-sm text-muted">{content.changeNote}</p>
+              <div className="flex shrink-0 gap-2">
                 {editing ? (
                   <>
                     <button
                       type="button"
                       onClick={handleSaveEdits}
-                      className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+                      className={btnAiSoft}
                     >
                       Save edits
                     </button>
                     <button
                       type="button"
                       onClick={() => setDraft(null)}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      className={btnSecondarySm}
                     >
                       Cancel
                     </button>
@@ -240,8 +259,9 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
                   <button
                     type="button"
                     onClick={() => setDraft(structuredClone(content))}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    className={btnSecondarySm}
                   >
+                    <IconPencil size={15} />
                     Edit wording
                   </button>
                 )}
@@ -249,100 +269,116 @@ export default function TailoredResumeSection({ applicationId }: { applicationId
             </div>
           )}
 
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">{content.header.name}</h3>
-            {content.header.contact.length > 0 && (
-              <p className="mt-0.5 text-xs text-gray-500">
-                {content.header.contact.join("  ·  ")}
-              </p>
-            )}
-          </div>
-
-          {content.summary && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-900">Summary</h4>
-              {editing ? (
-                <textarea
-                  value={content.summary}
-                  onChange={(e) => updateSummary(draft, setDraft, e.target.value)}
-                  rows={3}
-                  className="mt-1 w-full rounded-md border border-gray-300 p-2 text-sm text-gray-800"
-                />
-              ) : (
-                <p className="mt-1 text-sm text-gray-700">{content.summary}</p>
+          {/* Rendered as the document it is, so the preview reads like the PDF. */}
+          <article className="rounded-xl border border-border p-5 sm:p-6">
+            <header className="border-b border-border pb-4 text-center">
+              <h3 className="text-lg font-bold text-ink">{content.header.name}</h3>
+              {content.header.contact.length > 0 && (
+                <p className="mt-1 text-xs text-muted">
+                  {content.header.contact.join("  ·  ")}
+                </p>
               )}
-            </div>
-          )}
+            </header>
 
-          {content.sections.map((section, si) => (
-            <div key={si}>
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-gray-900">
-                {section.title}
-              </h4>
-              <div className="mt-2 space-y-3">
-                {section.entries.map((entry, ei) => (
-                  <div key={ei}>
-                    {entry.heading && (
-                      <p className="text-sm font-medium text-gray-800">{entry.heading}</p>
-                    )}
-                    <ul className="mt-1 space-y-2">
-                      {entry.bullets.map((bullet, bi) => (
-                        <li key={bi} className="text-sm">
-                          {editing ? (
-                            <textarea
-                              value={bullet.after}
-                              onChange={(e) =>
-                                updateBullet(draft, setDraft, si, ei, bi, e.target.value)
-                              }
-                              rows={2}
-                              className="w-full rounded-md border border-gray-300 p-2 text-sm text-gray-800"
-                            />
-                          ) : (
-                            <>
-                              <p className="text-gray-800">{bullet.after}</p>
-                              {bullet.before && bullet.before !== bullet.after && (
-                                <p className="mt-0.5 text-xs text-gray-400 line-through">
-                                  {bullet.before}
-                                </p>
-                              )}
-                            </>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+            {content.summary && (
+              <div className="mt-4">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
+                  Summary
+                </h4>
+                {editing ? (
+                  <textarea
+                    value={content.summary}
+                    onChange={(e) => updateSummary(draft, setDraft, e.target.value)}
+                    rows={3}
+                    aria-label="Summary"
+                    className={`mt-2 w-full ${inputClassName}`}
+                  />
+                ) : (
+                  <p className="mt-1.5 text-sm leading-relaxed text-ink">
+                    {content.summary}
+                  </p>
+                )}
               </div>
-            </div>
-          ))}
+            )}
+
+            {content.sections.map((section, si) => (
+              <div key={si} className="mt-5">
+                <h4 className="border-b border-border pb-1 text-xs font-bold uppercase tracking-wide text-muted">
+                  {section.title}
+                </h4>
+                <div className="mt-2.5 space-y-4">
+                  {section.entries.map((entry, ei) => (
+                    <div key={ei}>
+                      {entry.heading && (
+                        <p className="text-sm font-bold text-ink">{entry.heading}</p>
+                      )}
+                      <ul className="mt-1.5 space-y-2">
+                        {entry.bullets.map((bullet, bi) => (
+                          <li key={bi}>
+                            {editing ? (
+                              <textarea
+                                value={bullet.after}
+                                onChange={(e) =>
+                                  updateBullet(draft, setDraft, si, ei, bi, e.target.value)
+                                }
+                                rows={2}
+                                aria-label={`Bullet ${bi + 1}`}
+                                className={`w-full ${inputClassName}`}
+                              />
+                            ) : (
+                              <div className="flex gap-2.5 text-sm">
+                                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink" />
+                                <div className="min-w-0">
+                                  <p className="text-ink">{bullet.after}</p>
+                                  {bullet.before && bullet.before !== bullet.after && (
+                                    <p className="mt-1 text-xs text-muted line-through decoration-danger/40">
+                                      {bullet.before}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </article>
 
           {tailored && !editing && (
-            <p className="text-xs text-gray-400">
-              Generated {formatDate(tailored.updatedAt)}
-              {tailored.edited ? " · Edited by you" : ""}
-              {data?.upToDate
-                ? " · Up to date for your current resume and this posting."
-                : " · Your resume or this posting has changed since — you can regenerate."}
-            </p>
+            <AiProvenance
+              generatedAt={tailored.updatedAt}
+              upToDate={data?.upToDate ?? true}
+              edited={tailored.edited}
+            />
           )}
         </div>
       )}
-    </CollapsibleCard>
+
+      {!loading && !content && data?.hasResume && !generating && (
+        <p className="text-sm text-muted">
+          Nothing built yet. Generate a version of your resume aimed at this posting,
+          then review every change before you download it.
+        </p>
+      )}
+    </AiPanel>
   );
 }
 
-/** One-line status for the card header, readable while the card is collapsed. */
-function summarizeState(
+function resolveState(
   loading: boolean,
   generating: boolean,
   data: TailoredResponse | null
-): string | undefined {
-  if (generating) return "Building…";
-  if (loading || !data) return undefined;
-  if (!data.hasResume) return "No resume uploaded";
-  if (!data.tailored) return "Not built yet";
-  if (data.tailored.edited) return "Edited by you";
-  return data.upToDate ? "Up to date" : "Posting or resume changed";
+): AiState {
+  if (generating) return "working";
+  if (loading || !data) return "loading";
+  if (!data.hasResume) return "no-resume";
+  if (!data.tailored) return "not-generated";
+  if (data.tailored.edited) return "edited";
+  return data.upToDate ? "up-to-date" : "stale";
 }
 
 /** Parses the download filename out of the Content-Disposition header. */

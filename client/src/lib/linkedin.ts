@@ -6,22 +6,27 @@ interface LinkedinStatusMeta {
   badge: string;
 }
 
+/**
+ * Deliberately a different axis from the application pipeline: these are
+ * outline/tinted chips rather than the pipeline's filled badges, so a contact's
+ * networking state never reads as an application stage.
+ */
 export const LINKEDIN_STATUS_META: Record<LinkedinStatus, LinkedinStatusMeta> = {
   NONE: {
     label: "Not connected",
-    badge: "bg-gray-100 text-gray-700 ring-gray-200",
+    badge: "bg-subtle text-muted ring-border",
   },
   CONNECTION_SENT: {
     label: "Connection sent",
-    badge: "bg-yellow-100 text-yellow-800 ring-yellow-200",
+    badge: "bg-warning-soft text-amber-700 ring-warning-ring",
   },
   CONNECTED: {
     label: "Connected",
-    badge: "bg-blue-100 text-blue-700 ring-blue-200",
+    badge: "bg-brand-soft text-brand ring-brand-ring",
   },
   MESSAGING: {
     label: "Messaging",
-    badge: "bg-green-100 text-green-700 ring-green-200",
+    badge: "bg-success-soft text-green-700 ring-success-ring",
   },
 };
 

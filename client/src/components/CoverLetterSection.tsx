@@ -2,10 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import CollapsibleCard, { useCollapsible } from "@/components/CollapsibleCard";
 import CopyButton from "@/components/CopyButton";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { btnAi, btnAiSoft, btnSecondarySm, inputClassName } from "@/lib/ui";
+import {
+  AiError,
+  AiPanel,
+  AiProgress,
+  AiProvenance,
+  AiSkeleton,
+  AiStateChip,
+  NoResumeNotice,
+  type AiState,
+} from "@/components/ai";
+import {
+  IconDownload,
+  IconPencil,
+  IconRefresh,
+  IconSparkles,
+} from "@/components/icons";
 import type { CoverLetter, CoverLetterContent } from "@/lib/types";
 
 interface CoverLetterResponse {
@@ -14,29 +29,43 @@ interface CoverLetterResponse {
   hasResume: boolean;
 }
 
+const STEPS = [
+  "Reading your resume",
+  "Reading this posting",
+  "Finding what to lead with",
+  "Writing your letter",
+];
+
 /**
- * "Cover letter" card on the application detail page. Writes a letter for this
- * posting from the user's base resume (the server never invents facts), shows
- * it as it will read, and lets the user edit the wording, copy the plain text
- * into an application form, or download a formatted PDF.
+ * "Cover letter" — written for this posting from the base resume, following
+ * the conventions of the user's field, and never claiming anything the resume
+ * doesn't say.
+ *
+ * Two outputs on purpose: "Copy text" yields just the letter body for pasting
+ * into a web form (which collects contact details itself), while the PDF is
+ * the full letterhead version, dated the day it's downloaded.
  */
-export default function CoverLetterSection({ applicationId }: { applicationId: string }) {
+export default function CoverLetterSection({
+  applicationId,
+}: {
+  applicationId: string;
+}) {
   const [data, setData] = useState<CoverLetterResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<CoverLetterContent | null>(null);
-  const card = useCollapsible("cover-letter");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<CoverLetterResponse>(
-        `/api/applications/${applicationId}/cover-letter`
+      setData(
+        await apiJson<CoverLetterResponse>(
+          `/api/applications/${applicationId}/cover-letter`
+        )
       );
-      setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load cover letter.");
     } finally {
@@ -51,9 +80,7 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
   async function handleGenerate(force = false) {
     if (data?.letter?.edited && !force) {
       if (
-        !confirm(
-          "You've edited this letter. Regenerating will replace your edits. Continue?"
-        )
+        !confirm("You've edited this letter. Regenerating will replace your edits. Continue?")
       ) {
         return;
       }
@@ -62,9 +89,6 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
 
     setGenerating(true);
     setError(null);
-    // The button lives in the header, so it can be pressed while collapsed —
-    // open up so progress and the result are visible.
-    card.setOpen(true);
     try {
       const res = await apiFetch(
         `/api/applications/${applicationId}/cover-letter${force ? "?force=1" : ""}`,
@@ -76,8 +100,6 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
       };
 
       if (res.status === 409) {
-        // Edited-and-not-forced: ask, then retry with force. Otherwise the
-        // view was simply stale — sync to the server's state.
         if (body.needsForce) {
           setGenerating(false);
           await handleGenerate(true);
@@ -107,11 +129,12 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
     if (!draft) return;
     setError(null);
     try {
-      const res = await apiJson<CoverLetterResponse>(
-        `/api/applications/${applicationId}/cover-letter`,
-        { method: "PATCH", body: JSON.stringify({ content: draft }) }
+      setData(
+        await apiJson<CoverLetterResponse>(
+          `/api/applications/${applicationId}/cover-letter`,
+          { method: "PATCH", body: JSON.stringify({ content: draft }) }
+        )
       );
-      setData(res);
       setDraft(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save edits.");
@@ -148,13 +171,22 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
   const letter = data?.letter ?? null;
   const content = draft ?? letter?.content ?? null;
   const editing = draft !== null;
+  const state = resolveState(loading, generating, data);
 
   return (
-    <CollapsibleCard
-      storageKey="cover-letter"
-      state={card}
+    <AiPanel
       title="Cover letter"
-      meta={summarizeState(loading, generating, data)}
+      description={
+        <>
+          A letter for this posting, written from your resume and framed for this role.
+          Specialized for your field (set in{" "}
+          <Link href="/settings" className="font-semibold text-brand hover:underline">
+            Settings
+          </Link>
+          ) and kept to the length recruiters actually read.
+        </>
+      }
+      status={<AiStateChip state={state} />}
       actions={
         data?.hasResume && (
           <>
@@ -163,8 +195,9 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
                 type="button"
                 onClick={handleDownload}
                 disabled={downloading}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                className={btnSecondarySm}
               >
+                <IconDownload size={15} />
                 {downloading ? "Preparing…" : "Download PDF"}
               </button>
             )}
@@ -177,63 +210,46 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
                   ? "Already up to date — update your resume or this posting to regenerate."
                   : undefined
               }
-              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className={letter ? btnAiSoft : btnAi}
             >
+              {letter ? <IconRefresh size={15} /> : <IconSparkles size={16} />}
               {generating ? "Writing…" : letter ? "Regenerate" : "Write cover letter"}
             </button>
           </>
         )
       }
     >
-      <p className="text-sm text-gray-500">
-        A letter written for this posting from your resume — same facts, framed for
-        this role. Specialized for your field (set in{" "}
-        <Link href="/settings" className="font-medium text-gray-900 underline">
-          Settings
-        </Link>
-        ) and kept to the length recruiters actually read. Review, tweak, then copy
-        the text or download the PDF.
-      </p>
+      {error && (
+        <div className="mb-4">
+          <AiError message={error} />
+        </div>
+      )}
 
-      {error && <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-
-      {loading && <p className="mt-3 text-sm text-gray-500">Loading…</p>}
+      {loading && <AiSkeleton lines={7} />}
 
       {!loading && data && !data.hasResume && (
-        <p className="mt-3 text-sm text-gray-500">
-          Upload your resume in{" "}
-          <Link href="/settings" className="font-medium text-gray-900 underline">
-            Settings
-          </Link>{" "}
-          to write a cover letter for this job.
-        </p>
+        <NoResumeNotice action="The cover letter" />
       )}
 
-      {generating && (
-        <p className="mt-3 text-sm text-gray-500">
-          Writing your letter for this posting… this can take up to a minute.
-        </p>
-      )}
+      {generating && !content && <AiProgress steps={STEPS} />}
 
       {!loading && content && (
-        <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+        <div className="space-y-5">
+          {generating && <AiProgress steps={STEPS} />}
+
           {letter && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-gray-700">{content.approachNote}</p>
-              <div className="flex gap-2">
+            <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-subtle/60 p-3">
+              <p className="min-w-0 flex-1 text-sm text-muted">{content.approachNote}</p>
+              <div className="flex shrink-0 gap-2">
                 {editing ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={handleSaveEdits}
-                      className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
-                    >
+                    <button type="button" onClick={handleSaveEdits} className={btnAiSoft}>
                       Save edits
                     </button>
                     <button
                       type="button"
                       onClick={() => setDraft(null)}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      className={btnSecondarySm}
                     >
                       Cancel
                     </button>
@@ -244,8 +260,9 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
                     <button
                       type="button"
                       onClick={() => setDraft(structuredClone(content))}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      className={btnSecondarySm}
                     >
+                      <IconPencil size={15} />
                       Edit wording
                     </button>
                   </>
@@ -254,83 +271,92 @@ export default function CoverLetterSection({ applicationId }: { applicationId: s
             </div>
           )}
 
-          {/* Letterhead — read-only. Name and contact come from the resume, and
-              the date is stamped onto the PDF at download time. */}
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">{content.header.name}</h3>
-            {content.header.contact.length > 0 && (
-              <p className="mt-0.5 text-xs text-gray-500">
-                {content.header.contact.join("  ·  ")}
-              </p>
-            )}
-            {recipientLines(content).length > 0 && (
-              <p className="mt-3 whitespace-pre-line text-sm text-gray-700">
-                {recipientLines(content).join("\n")}
-              </p>
-            )}
-          </div>
+          <article className="rounded-xl border border-border p-5 sm:p-8">
+            {/* Letterhead is read-only: name and contact come from the resume,
+                and the date is stamped onto the PDF at download time. */}
+            <header>
+              <h3 className="text-base font-bold text-ink">{content.header.name}</h3>
+              {content.header.contact.length > 0 && (
+                <p className="mt-0.5 text-xs text-muted">
+                  {content.header.contact.join("  ·  ")}
+                </p>
+              )}
+              {recipientLines(content).length > 0 && (
+                <p className="mt-5 whitespace-pre-line text-sm text-ink">
+                  {recipientLines(content).join("\n")}
+                </p>
+              )}
+            </header>
 
-          <div className="space-y-3">
-            {editing ? (
-              <input
-                type="text"
-                value={content.greeting}
-                onChange={(e) => setDraft({ ...content, greeting: e.target.value })}
-                className="w-full rounded-md border border-gray-300 p-2 text-sm text-gray-800"
-              />
-            ) : (
-              <p className="text-sm text-gray-800">{content.greeting}</p>
-            )}
-
-            {content.paragraphs.map((paragraph, pi) =>
-              editing ? (
-                <textarea
-                  key={pi}
-                  value={paragraph}
-                  onChange={(e) => updateParagraph(content, setDraft, pi, e.target.value)}
-                  rows={5}
-                  className="w-full rounded-md border border-gray-300 p-2 text-sm text-gray-800"
+            <div className="mt-5 space-y-4">
+              {editing ? (
+                <input
+                  type="text"
+                  value={content.greeting}
+                  onChange={(e) => setDraft({ ...content, greeting: e.target.value })}
+                  aria-label="Greeting"
+                  className={`w-full ${inputClassName}`}
                 />
               ) : (
-                <p key={pi} className="text-sm leading-relaxed text-gray-800">
-                  {paragraph}
-                </p>
-              )
-            )}
+                <p className="text-sm text-ink">{content.greeting}</p>
+              )}
 
-            <div>
-              <p className="text-sm text-gray-800">{content.closing}</p>
-              <p className="mt-2 text-sm font-medium text-gray-900">{content.signature}</p>
+              {content.paragraphs.map((paragraph, pi) =>
+                editing ? (
+                  <textarea
+                    key={pi}
+                    value={paragraph}
+                    onChange={(e) => updateParagraph(content, setDraft, pi, e.target.value)}
+                    rows={5}
+                    aria-label={`Paragraph ${pi + 1}`}
+                    className={`w-full ${inputClassName}`}
+                  />
+                ) : (
+                  <p key={pi} className="text-sm leading-relaxed text-ink">
+                    {paragraph}
+                  </p>
+                )
+              )}
+
+              <div className="pt-1">
+                <p className="text-sm text-ink">{content.closing}</p>
+                <p className="mt-3 text-sm font-bold text-ink">{content.signature}</p>
+              </div>
             </div>
-          </div>
+          </article>
 
           {letter && !editing && (
-            <p className="text-xs text-gray-400">
-              {wordCount(content)} words · Generated {formatDate(letter.updatedAt)}
-              {letter.edited ? " · Edited by you" : ""}
-              {data?.upToDate
-                ? " · Up to date for your current resume and this posting."
-                : " · Your resume or this posting has changed since — you can regenerate."}
-            </p>
+            <AiProvenance
+              generatedAt={letter.updatedAt}
+              upToDate={data?.upToDate ?? true}
+              edited={letter.edited}
+              extra={`${wordCount(content)} words`}
+            />
           )}
         </div>
       )}
-    </CollapsibleCard>
+
+      {!loading && !content && data?.hasResume && !generating && (
+        <p className="text-sm text-muted">
+          Nothing written yet. Generate a letter for this posting, then copy the text
+          into an application form or download the formatted PDF.
+        </p>
+      )}
+    </AiPanel>
   );
 }
 
-/** One-line status for the card header, readable while the card is collapsed. */
-function summarizeState(
+function resolveState(
   loading: boolean,
   generating: boolean,
   data: CoverLetterResponse | null
-): string | undefined {
-  if (generating) return "Writing…";
-  if (loading || !data) return undefined;
-  if (!data.hasResume) return "No resume uploaded";
-  if (!data.letter) return "Not written yet";
-  if (data.letter.edited) return "Edited by you";
-  return data.upToDate ? "Up to date" : "Posting or resume changed";
+): AiState {
+  if (generating) return "working";
+  if (loading || !data) return "loading";
+  if (!data.hasResume) return "no-resume";
+  if (!data.letter) return "not-generated";
+  if (data.letter.edited) return "edited";
+  return data.upToDate ? "up-to-date" : "stale";
 }
 
 /** The addressee block, minus any line the posting never provided. */

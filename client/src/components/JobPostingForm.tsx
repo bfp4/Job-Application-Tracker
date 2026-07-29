@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import CompanyInput from "@/components/CompanyInput";
 import LocationInput from "@/components/LocationInput";
 import { CopyField } from "@/components/CopyButton";
-import { inputClassName } from "@/lib/ui";
+import { btnPrimary, btnSecondary, inputClassName, labelClassName } from "@/lib/ui";
 import type { JobPosting } from "@/lib/types";
 
 /** The posting fields a user can change after the job has been tracked. */
@@ -68,12 +68,12 @@ export default function JobPostingForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label htmlFor="edit-title" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="edit-title" className={labelClassName}>
             Title
           </label>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <CopyField value={title}>
               <input
                 id="edit-title"
@@ -88,10 +88,10 @@ export default function JobPostingForm({
           </div>
         </div>
         <div>
-          <label htmlFor="edit-company" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="edit-company" className={labelClassName}>
             Company
           </label>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <CompanyInput
               id="edit-company"
               required
@@ -102,10 +102,10 @@ export default function JobPostingForm({
           </div>
         </div>
         <div>
-          <label htmlFor="edit-location" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="edit-location" className={labelClassName}>
             Location
           </label>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <LocationInput
               id="edit-location"
               value={locations}
@@ -115,10 +115,10 @@ export default function JobPostingForm({
           </div>
         </div>
         <div>
-          <label htmlFor="edit-salary" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="edit-salary" className={labelClassName}>
             Salary
           </label>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <CopyField value={salary}>
               <input
                 id="edit-salary"
@@ -133,10 +133,10 @@ export default function JobPostingForm({
           </div>
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor="edit-jobUrl" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="edit-jobUrl" className={labelClassName}>
             Job URL
           </label>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <CopyField value={jobUrl}>
               <input
                 id="edit-jobUrl"
@@ -152,10 +152,10 @@ export default function JobPostingForm({
           </div>
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor="edit-description" className="block text-xs font-medium text-gray-700">
+          <label htmlFor="edit-description" className={labelClassName}>
             Description
           </label>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <CopyField value={description} multiline>
               <textarea
                 id="edit-description"
@@ -175,7 +175,7 @@ export default function JobPostingForm({
         <button
           type="submit"
           disabled={saving || !complete}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className={btnPrimary}
         >
           {saving ? "Saving…" : "Save changes"}
         </button>
@@ -183,11 +183,11 @@ export default function JobPostingForm({
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className={btnSecondary}
         >
           Cancel
         </button>
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="text-sm font-medium text-danger">{error}</p>}
       </div>
     </form>
   );

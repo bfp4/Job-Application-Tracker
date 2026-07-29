@@ -63,7 +63,7 @@ export function Chevron({ open, className = "" }: { open: boolean; className?: s
       viewBox="0 0 20 20"
       fill="currentColor"
       aria-hidden="true"
-      className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${
+      className={`h-4 w-4 shrink-0 text-muted transition-transform duration-200 ${
         open ? "rotate-90" : ""
       } ${className}`}
     >
@@ -93,8 +93,8 @@ export default function CollapsibleCard({
   defaultOpen = true,
   state,
   padding = "md",
-  className = "border-gray-200",
-  titleClassName = "text-lg font-semibold text-gray-900",
+  className = "border-border",
+  titleClassName = "text-base font-bold text-ink",
 }: {
   title: ReactNode;
   /** Short summary shown next to the title — what the card holds when closed. */
@@ -116,22 +116,24 @@ export default function CollapsibleCard({
   const { open, toggle } = state ?? internal;
   const bodyId = useId();
 
-  const headerPadding = padding === "sm" ? "px-4 py-3" : "px-6 py-4";
-  const bodyPadding = padding === "sm" ? "px-4 pb-4" : "px-6 pb-6";
+  const headerPadding = padding === "sm" ? "px-4 py-3" : "px-5 py-4";
+  const bodyPadding = padding === "sm" ? "px-4 pb-4" : "px-5 pb-5";
 
   return (
-    <div className={`rounded-xl border bg-white shadow-sm ${className}`}>
+    <div className={`rounded-2xl border bg-surface shadow-card ${className}`}>
       <div className={`flex flex-wrap items-center justify-between gap-3 ${headerPadding}`}>
         <button
           type="button"
           onClick={toggle}
           aria-expanded={open}
           aria-controls={bodyId}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
         >
           <Chevron open={open} />
           <span className={`min-w-0 truncate ${titleClassName}`}>{title}</span>
-          {meta && <span className="min-w-0 truncate text-sm text-gray-400">{meta}</span>}
+          {meta && (
+            <span className="min-w-0 truncate text-sm font-medium text-muted">{meta}</span>
+          )}
         </button>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>

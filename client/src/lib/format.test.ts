@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, toDateInputValue } from "./format";
+import {
+  daysUntil,
+  formatDate,
+  relativeDayLabel,
+  toDateInputValue,
+  urgencyOf,
+} from "./format";
 
 describe("formatDate", () => {
   it("returns an em dash for empty input", () => {
@@ -48,5 +54,65 @@ describe("toDateInputValue", () => {
 
   it("truncates a full timestamp to its UTC calendar day", () => {
     expect(toDateInputValue("2026-07-28T23:59:59.000Z")).toBe("2026-07-28");
+  });
+});
+
+describe("daysUntil", () => {
+  /** Local noon, so the case doesn't depend on the runner's zone. */
+  const now = new Date(2026, 6, 28, 12, 0, 0);
+
+  it("returns null for missing or unparseable input", () => {
+    expect(daysUntil(null, now)).toBeNull();
+    expect(daysUntil("nope", now)).toBeNull();
+  });
+
+  it("counts whole days forward and backward from today", () => {
+    expect(daysUntil("2026-07-28T00:00:00.000Z", now)).toBe(0);
+    expect(daysUntil("2026-07-29T00:00:00.000Z", now)).toBe(1);
+    expect(daysUntil("2026-08-04T00:00:00.000Z", now)).toBe(7);
+    expect(daysUntil("2026-07-26T00:00:00.000Z", now)).toBe(-2);
+  });
+
+  /**
+   * Regression guard for the same class of bug formatDate had. Late in the
+   * evening in a negative-offset zone it is already tomorrow in UTC, and
+   * comparing instants rather than calendar days reported today's follow-up as
+   * overdue — while the row above it still rendered today's date.
+   */
+  it("treats the viewer's local calendar day as today", () => {
+    const lateEvening = new Date(2026, 6, 28, 23, 30, 0);
+    expect(daysUntil("2026-07-28T00:00:00.000Z", lateEvening)).toBe(0);
+
+    const earlyMorning = new Date(2026, 6, 28, 0, 30, 0);
+    expect(daysUntil("2026-07-28T00:00:00.000Z", earlyMorning)).toBe(0);
+  });
+});
+
+describe("urgencyOf", () => {
+  const now = new Date(2026, 6, 28, 12, 0, 0);
+
+  it("bands a date by how much attention it needs", () => {
+    expect(urgencyOf("2026-07-27T00:00:00.000Z", now)).toBe("overdue");
+    expect(urgencyOf("2026-07-28T00:00:00.000Z", now)).toBe("today");
+    expect(urgencyOf("2026-07-31T00:00:00.000Z", now)).toBe("soon");
+    expect(urgencyOf("2026-08-01T00:00:00.000Z", now)).toBe("later");
+  });
+
+  /** The "soon" window matches the reminder email's 3-day lead time. */
+  it("closes the soon window exactly three days out", () => {
+    expect(urgencyOf("2026-07-31T00:00:00.000Z", now)).toBe("soon");
+    expect(urgencyOf("2026-08-01T00:00:00.000Z", now)).not.toBe("soon");
+  });
+});
+
+describe("relativeDayLabel", () => {
+  const now = new Date(2026, 6, 28, 12, 0, 0);
+
+  it("phrases the distance to a due date", () => {
+    expect(relativeDayLabel("2026-07-28T00:00:00.000Z", now)).toBe("Today");
+    expect(relativeDayLabel("2026-07-29T00:00:00.000Z", now)).toBe("Tomorrow");
+    expect(relativeDayLabel("2026-08-02T00:00:00.000Z", now)).toBe("in 5 days");
+    expect(relativeDayLabel("2026-07-27T00:00:00.000Z", now)).toBe("1 day overdue");
+    expect(relativeDayLabel("2026-07-25T00:00:00.000Z", now)).toBe("3 days overdue");
   });
 });

@@ -2,9 +2,25 @@
 
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
-import CollapsibleCard from "@/components/CollapsibleCard";
 import { CopyField } from "@/components/CopyButton";
-import { inputClassName } from "@/lib/ui";
+import { AiError } from "@/components/ai";
+import {
+  btnAiSm,
+  btnAiSoft,
+  btnPrimarySm,
+  btnSecondarySm,
+  cardClassName,
+  inputClassName,
+  labelClassName,
+} from "@/lib/ui";
+import {
+  IconExternalLink,
+  IconMail,
+  IconPhone,
+  IconSparkles,
+  IconTrash,
+  IconUsers,
+} from "@/components/icons";
 import {
   LINKEDIN_STATUS_ORDER,
   linkedinStatusBadgeClasses,
@@ -58,10 +74,11 @@ function toPayload(fields: ContactFields) {
 }
 
 /**
- * "Contacts" card on the application detail page: people the user is in
- * contact with about this application (recruiter, hiring manager, referral).
+ * "Contacts": the people attached to this application — recruiters, hiring
+ * managers, referrals — and the LinkedIn outreach flow for each.
+ *
  * Mutations patch the parent page's application state through `setContacts`
- * instead of re-fetching.
+ * rather than re-fetching the whole application graph.
  */
 export default function ContactsSection({
   applicationId,
@@ -142,47 +159,50 @@ export default function ContactsSection({
   }
 
   return (
-    <CollapsibleCard
-      storageKey="contacts"
-      title="Contacts"
-      meta={
-        contacts.length === 0
-          ? "None yet"
-          : `${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"}`
-      }
-    >
-      <p className="text-sm text-gray-500">
-        People you&apos;re in touch with about this application — recruiters, hiring
-        managers, referrals. Track your LinkedIn status with each and draft a short
-        connection note to introduce yourself and boost your application&apos;s
-        visibility.
-      </p>
+    <section className={cardClassName}>
+      <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div>
+          <h2 className="text-base font-bold text-ink">Contacts</h2>
+          <p className="mt-1 text-sm text-muted">
+            People you&apos;re in touch with about this application. Track where each
+            LinkedIn connection stands and draft a short note to introduce yourself.
+          </p>
+        </div>
+        {contacts.length > 0 && (
+          <span className="shrink-0 rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-muted">
+            {contacts.length} {contacts.length === 1 ? "contact" : "contacts"}
+          </span>
+        )}
+      </div>
 
-      {error && (
-        <p className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
-      )}
+      <div className="space-y-4 border-t border-border p-5">
+        {error && <AiError message={error} />}
 
-      {contacts.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-500">No contacts yet.</p>
-      ) : (
-        <ul className="mt-4 space-y-4">
-          {contacts.map((contact) => (
-            <ContactItem
-              key={contact.id}
-              contact={contact}
-              onSave={handleSave}
-              onDelete={handleDelete}
-              onStatusChange={handleStatusChange}
-              onSaveMessage={handleSaveMessage}
-              onGenerateMessage={handleGenerateMessage}
-              setError={setError}
-            />
-          ))}
-        </ul>
-      )}
+        {contacts.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+            <IconUsers size={26} className="mx-auto text-border" strokeWidth={1.5} />
+            <p className="mt-2 text-sm font-medium text-muted">No contacts yet.</p>
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {contacts.map((contact) => (
+              <ContactItem
+                key={contact.id}
+                contact={contact}
+                onSave={handleSave}
+                onDelete={handleDelete}
+                onStatusChange={handleStatusChange}
+                onSaveMessage={handleSaveMessage}
+                onGenerateMessage={handleGenerateMessage}
+                setError={setError}
+              />
+            ))}
+          </ul>
+        )}
 
-      <AddContactForm onAdd={handleAdd} setError={setError} />
-    </CollapsibleCard>
+        <AddContactForm onAdd={handleAdd} setError={setError} />
+      </div>
+    </section>
   );
 }
 
@@ -207,7 +227,7 @@ function ContactItem({
 
   if (editing) {
     return (
-      <li className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+      <li className="rounded-xl border border-border bg-subtle/40 p-4">
         <ContactForm
           initial={toFields(contact)}
           submitLabel="Save"
@@ -224,65 +244,72 @@ function ContactItem({
   }
 
   return (
-    <li className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+    <li className="rounded-xl border border-border bg-subtle/40 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900">
+          <p className="text-sm font-bold text-ink">
             {contact.name}
             {contact.position && (
-              <span className="font-normal text-gray-500"> · {contact.position}</span>
+              <span className="font-medium text-muted"> · {contact.position}</span>
             )}
           </p>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium">
             {contact.linkedinUrl && (
               <a
                 href={contact.linkedinUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-gray-900 underline"
+                className="inline-flex items-center gap-1 text-brand hover:underline"
               >
+                <IconExternalLink size={13} />
                 LinkedIn
               </a>
             )}
             {contact.email && (
-              <a href={`mailto:${contact.email}`} className="text-gray-900 underline">
+              <a
+                href={`mailto:${contact.email}`}
+                className="inline-flex items-center gap-1 text-brand hover:underline"
+              >
+                <IconMail size={13} />
                 {contact.email}
               </a>
             )}
             {contact.phone && (
-              <a href={`tel:${contact.phone}`} className="text-gray-900 underline">
+              <a
+                href={`tel:${contact.phone}`}
+                className="inline-flex items-center gap-1 text-brand hover:underline"
+              >
+                <IconPhone size={13} />
                 {contact.phone}
               </a>
             )}
           </div>
           {contact.notes && (
-            <p className="mt-2 whitespace-pre-line text-xs text-gray-500">
-              {contact.notes}
-            </p>
+            <p className="mt-2 whitespace-pre-line text-xs text-muted">{contact.notes}</p>
           )}
         </div>
-        <div className="flex shrink-0 gap-3">
+
+        <div className="flex shrink-0 gap-1">
           <button
             type="button"
             onClick={() => {
               setError(null);
               setEditing(true);
             }}
-            className="text-sm text-gray-400 hover:text-gray-900"
+            className={btnSecondarySm}
           >
             Edit
           </button>
           <button
             type="button"
+            aria-label={`Remove ${contact.name}`}
             onClick={() => {
               setError(null);
-              void onDelete(contact.id).catch(() =>
-                setError("Failed to remove contact.")
-              );
+              void onDelete(contact.id).catch(() => setError("Failed to remove contact."));
             }}
-            className="text-sm text-gray-400 hover:text-red-600"
+            className="rounded-lg p-1.5 text-muted transition hover:bg-danger-soft hover:text-danger"
           >
-            Remove
+            <IconTrash size={16} />
           </button>
         </div>
       </div>
@@ -299,11 +326,12 @@ function ContactItem({
 }
 
 /**
- * "LinkedIn" sub-panel on a contact: where the user stands in the networking
- * flow (a status dropdown), plus an AI-drafted connection-request note (≤300
- * chars) built from the posting, resume, application status and notes. The
- * note textarea mirrors the questions pattern — edit locally, save on blur,
- * and refresh when an AI draft arrives via props.
+ * The LinkedIn sub-panel on a contact: where the user stands in the networking
+ * flow, plus an AI-drafted connection note (≤300 chars) built from the posting,
+ * resume, and where the application stands.
+ *
+ * The note mirrors the questions pattern — edit locally, save on blur, and
+ * refresh when an AI draft arrives via props.
  */
 function ContactLinkedinPanel({
   contact,
@@ -372,19 +400,22 @@ function ContactLinkedinPanel({
   const overLimit = messageDraft.length > MAX_CONNECT_MESSAGE_CHARS;
 
   return (
-    <div className="mt-4 border-t border-gray-100 pt-3">
+    <div className="mt-4 border-t border-border pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label className="text-xs font-medium text-gray-700">
+        <label
+          htmlFor={`linkedin-status-${contact.id}`}
+          className="text-xs font-semibold text-ink"
+        >
           LinkedIn status
         </label>
         <select
+          id={`linkedin-status-${contact.id}`}
           value={contact.linkedinStatus}
           disabled={savingStatus}
           onChange={(e) => handleStatusSelect(e.target.value as LinkedinStatus)}
-          className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset focus:outline-none disabled:opacity-60 ${linkedinStatusBadgeClasses(
+          className={`cursor-pointer rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset focus:outline-none disabled:opacity-60 ${linkedinStatusBadgeClasses(
             contact.linkedinStatus
           )}`}
-          aria-label="LinkedIn status with this contact"
         >
           {LINKEDIN_STATUS_ORDER.map((status) => (
             <option key={status} value={status}>
@@ -396,59 +427,54 @@ function ContactLinkedinPanel({
 
       <div className="mt-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-gray-700">
+          <label
+            htmlFor={`connect-message-${contact.id}`}
+            className="text-xs font-semibold text-ink"
+          >
             Connection message
           </label>
-          <span className={`text-xs ${overLimit ? "text-red-600" : "text-gray-400"}`}>
+          <span
+            className={`text-xs font-semibold tabular-nums ${
+              overLimit ? "text-danger" : "text-muted"
+            }`}
+          >
             {messageDraft.length}/{MAX_CONNECT_MESSAGE_CHARS}
           </span>
         </div>
-        <div className="mt-1">
+        <div className="mt-1.5">
           <CopyField value={messageDraft} multiline>
             <textarea
+              id={`connect-message-${contact.id}`}
               value={messageDraft}
               onChange={(e) => setMessageDraft(e.target.value)}
               onBlur={handleMessageBlur}
               rows={messageDraft ? 4 : 2}
               maxLength={MAX_CONNECT_MESSAGE_CHARS}
               disabled={generating}
-              className={`w-full bg-white pr-9 ${inputClassName}`}
-              placeholder="A short intro note to send with your LinkedIn connection request — generate one with AI, then tweak it."
+              placeholder="A short intro note to send with your connection request — generate one, then tweak it."
+              className={`w-full pr-9 ${inputClassName}`}
             />
           </CopyField>
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={handleGenerateClick}
           disabled={generating}
-          title="Draft a LinkedIn connection note from this posting, your resume, and where the application stands."
-          className={
-            messageDraft.trim() !== ""
-              ? "rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-              : "rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-          }
+          title="Draft a note from this posting, your resume, and where the application stands."
+          className={messageDraft.trim() !== "" ? btnAiSoft : btnAiSm}
         >
+          <IconSparkles size={15} />
           {generating
             ? "Generating…"
             : messageDraft.trim() !== ""
               ? "Regenerate"
               : "Generate message"}
         </button>
-        {contact.linkedinUrl && (
-          <a
-            href={contact.linkedinUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm text-gray-500 underline hover:text-gray-900"
-          >
-            Open LinkedIn ↗
-          </a>
-        )}
         {generating && (
-          <span className="text-sm text-gray-500">
+          <span className="text-xs font-medium text-ai">
             Reading this posting, your resume, and the application status…
           </span>
         )}
@@ -468,12 +494,12 @@ function AddContactForm({
   const [formKey, setFormKey] = useState(0);
 
   return (
-    <div className="mt-4 border-t border-gray-100 pt-4">
-      <h3 className="text-sm font-medium text-gray-900">Add a contact</h3>
+    <div className="border-t border-border pt-5">
+      <h3 className="text-sm font-bold text-ink">Add a contact</h3>
       <ContactForm
         key={formKey}
         initial={EMPTY_FIELDS}
-        submitLabel="Add"
+        submitLabel="Add contact"
         pendingLabel="Adding…"
         onSubmit={async (fields) => {
           await onAdd(fields);
@@ -521,53 +547,71 @@ function ContactForm({
     }
   }
 
-  const textInputs: { field: keyof ContactFields; label: string; type?: string; placeholder?: string }[] = [
+  const textInputs: {
+    field: keyof ContactFields;
+    label: string;
+    type?: string;
+    placeholder?: string;
+  }[] = [
     { field: "name", label: "Name *", placeholder: "e.g. Dana Smith" },
     { field: "position", label: "Position", placeholder: "e.g. Engineering Manager" },
-    { field: "linkedinUrl", label: "LinkedIn", type: "url", placeholder: "https://www.linkedin.com/in/…" },
+    {
+      field: "linkedinUrl",
+      label: "LinkedIn",
+      type: "url",
+      placeholder: "https://www.linkedin.com/in/…",
+    },
     { field: "email", label: "Email", type: "email", placeholder: "dana@company.com" },
     { field: "phone", label: "Phone", type: "tel", placeholder: "+1 555 123 4567" },
   ];
 
   return (
     <form onSubmit={handleSubmit} className="mt-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {textInputs.map(({ field, label, type, placeholder }) => (
           <div key={field}>
-            <label className="block text-xs font-medium text-gray-700">{label}</label>
-            <div className="mt-1">
+            <label htmlFor={`contact-${field}`} className={labelClassName}>
+              {label}
+            </label>
+            <div className="mt-1.5">
               <CopyField value={fields[field]}>
                 <input
+                  id={`contact-${field}`}
                   type={type ?? "text"}
                   value={fields[field]}
                   onChange={(e) => setField(field, e.target.value)}
                   placeholder={placeholder}
-                  className={`w-full bg-white pr-9 ${inputClassName}`}
+                  className={`w-full pr-9 ${inputClassName}`}
                 />
               </CopyField>
             </div>
           </div>
         ))}
       </div>
-      <div className="mt-3">
-        <label className="block text-xs font-medium text-gray-700">Notes</label>
-        <div className="mt-1">
+
+      <div className="mt-4">
+        <label htmlFor="contact-notes" className={labelClassName}>
+          Notes
+        </label>
+        <div className="mt-1.5">
           <CopyField value={fields.notes} multiline>
             <textarea
+              id="contact-notes"
               value={fields.notes}
               onChange={(e) => setField("notes", e.target.value)}
               rows={2}
               placeholder="e.g. Met at the campus career fair — said to mention her referral."
-              className={`w-full bg-white pr-9 ${inputClassName}`}
+              className={`w-full pr-9 ${inputClassName}`}
             />
           </CopyField>
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-2">
+
+      <div className="mt-4 flex items-center gap-2">
         <button
           type="submit"
           disabled={submitting || !fields.name.trim()}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          className={btnPrimarySm}
         >
           {submitting ? pendingLabel : submitLabel}
         </button>
@@ -576,7 +620,7 @@ function ContactForm({
             type="button"
             onClick={onCancel}
             disabled={submitting}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            className={btnSecondarySm}
           >
             Cancel
           </button>
