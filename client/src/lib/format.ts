@@ -28,6 +28,18 @@ export function toDateInputValue(value: string | null | undefined): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Today as a `YYYY-MM-DD` date-input value, in the viewer's *local* calendar
+ * day. `new Date().toISOString()` would give the UTC day, which is already
+ * tomorrow for anyone west of UTC in the evening — they'd have this evening's
+ * action recorded with tomorrow's date.
+ */
+export function todayInputValue(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**

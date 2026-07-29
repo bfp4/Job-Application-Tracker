@@ -4,6 +4,7 @@ import {
   formatDate,
   relativeDayLabel,
   toDateInputValue,
+  todayInputValue,
   urgencyOf,
 } from "./format";
 
@@ -54,6 +55,26 @@ describe("toDateInputValue", () => {
 
   it("truncates a full timestamp to its UTC calendar day", () => {
     expect(toDateInputValue("2026-07-28T23:59:59.000Z")).toBe("2026-07-28");
+  });
+});
+
+describe("todayInputValue", () => {
+  it("pads the month and day to two digits", () => {
+    expect(todayInputValue(new Date(2026, 0, 5, 9, 0, 0))).toBe("2026-01-05");
+  });
+
+  /**
+   * Regression guard. This fills in the applied date when a status moves off
+   * "Not applied". Taking the UTC day instead recorded *tomorrow* for anyone
+   * west of UTC acting in the evening, and the header then showed a future
+   * applied date.
+   */
+  it("uses the local calendar day, not the UTC one", () => {
+    const lateEvening = new Date(2026, 6, 28, 23, 30, 0);
+    expect(todayInputValue(lateEvening)).toBe("2026-07-28");
+
+    const earlyMorning = new Date(2026, 6, 28, 0, 30, 0);
+    expect(todayInputValue(earlyMorning)).toBe("2026-07-28");
   });
 });
 

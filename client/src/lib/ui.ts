@@ -32,23 +32,15 @@ export const btnPrimarySm = `${btnBase} ${btnSizeSm} bg-brand text-white shadow-
 export const btnSecondary = `${btnBase} ${btnSize} border border-border bg-surface text-ink shadow-sm hover:bg-subtle`;
 export const btnSecondarySm = `${btnBase} ${btnSizeSm} border border-border bg-surface text-ink shadow-sm hover:bg-subtle`;
 
-export const btnGhost = `${btnBase} ${btnSize} text-muted hover:bg-subtle hover:text-ink`;
-export const btnGhostSm = `${btnBase} ${btnSizeSm} text-muted hover:bg-subtle hover:text-ink`;
-
 /** For actions that invoke a model. Always pair with the sparkle glyph. */
 export const btnAi = `${btnBase} ${btnSize} bg-ai text-white shadow-sm hover:bg-ai-hover`;
 export const btnAiSm = `${btnBase} ${btnSizeSm} bg-ai text-white shadow-sm hover:bg-ai-hover`;
 /** The lower-emphasis AI action (regenerate next to a download, etc.). */
 export const btnAiSoft = `${btnBase} ${btnSizeSm} border border-ai-ring bg-ai-soft text-ai hover:bg-ai-ring/50`;
 
-export const btnDangerSm = `${btnBase} ${btnSizeSm} border border-danger-ring bg-surface text-danger shadow-sm hover:bg-danger-soft`;
-
 /** Card surface. 16px radius + 1px border + soft shadow, per the spec. */
 export const cardClassName =
   "rounded-2xl border border-border bg-surface shadow-card";
-
-/** Cards that are themselves links/buttons get the 2px hover lift. */
-export const cardInteractive = `${cardClassName} transition duration-200 hover:-translate-y-0.5 hover:shadow-card-hover`;
 
 /** Section heading inside a card. */
 export const cardTitleClassName = "text-base font-bold text-ink";

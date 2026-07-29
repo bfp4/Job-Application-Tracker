@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { apiFetch } from "@/lib/api";
 import { CopyField } from "@/components/CopyButton";
 import { AiError } from "@/components/ai";
@@ -528,6 +528,10 @@ function ContactForm({
 }) {
   const [fields, setFields] = useState(initial);
   const [submitting, setSubmitting] = useState(false);
+  // Several of these forms can be on the page at once — the add form plus one
+  // per contact in edit mode — so the field ids have to be instance-scoped or
+  // the labels point at whichever copy mounted first.
+  const formId = useId();
 
   function setField(field: keyof ContactFields, value: string) {
     setFields((f) => ({ ...f, [field]: value }));
@@ -570,13 +574,13 @@ function ContactForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {textInputs.map(({ field, label, type, placeholder }) => (
           <div key={field}>
-            <label htmlFor={`contact-${field}`} className={labelClassName}>
+            <label htmlFor={`${formId}-${field}`} className={labelClassName}>
               {label}
             </label>
             <div className="mt-1.5">
               <CopyField value={fields[field]}>
                 <input
-                  id={`contact-${field}`}
+                  id={`${formId}-${field}`}
                   type={type ?? "text"}
                   value={fields[field]}
                   onChange={(e) => setField(field, e.target.value)}
@@ -590,13 +594,13 @@ function ContactForm({
       </div>
 
       <div className="mt-4">
-        <label htmlFor="contact-notes" className={labelClassName}>
+        <label htmlFor={`${formId}-notes`} className={labelClassName}>
           Notes
         </label>
         <div className="mt-1.5">
           <CopyField value={fields.notes} multiline>
             <textarea
-              id="contact-notes"
+              id={`${formId}-notes`}
               value={fields.notes}
               onChange={(e) => setField("notes", e.target.value)}
               rows={2}

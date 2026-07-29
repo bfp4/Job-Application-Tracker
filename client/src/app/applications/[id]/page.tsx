@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
@@ -16,7 +23,13 @@ import JobPostingForm, { type JobPostingEdits } from "@/components/JobPostingFor
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate, relativeDayLabel, toDateInputValue, urgencyOf } from "@/lib/format";
+import {
+  formatDate,
+  relativeDayLabel,
+  toDateInputValue,
+  todayInputValue,
+  urgencyOf,
+} from "@/lib/format";
 import { STATUS_ORDER, statusLabel } from "@/lib/status";
 import {
   btnPrimarySm,
@@ -57,6 +70,26 @@ type TabId = (typeof TABS)[number]["id"];
 
 function isTabId(value: string | null): value is TabId {
   return TABS.some((tab) => tab.id === value);
+}
+
+/**
+ * Renders nothing until its tab is first opened, then stays mounted and hides
+ * when you leave it.
+ *
+ * The AI panels tell the user a generation keeps running while they work in
+ * other tabs. That's only true if the panel survives the trip: unmounting it
+ * drops the progress list and, since the POST hasn't written yet, coming back
+ * would show "Not generated" and invite a second (billed) run.
+ */
+function KeepAliveTab({ active, children }: { active: boolean; children: ReactNode }) {
+  const [visited, setVisited] = useState(active);
+
+  useEffect(() => {
+    if (active) setVisited(true);
+  }, [active]);
+
+  if (!visited) return null;
+  return <div hidden={!active}>{children}</div>;
 }
 
 /**
@@ -142,7 +175,7 @@ export default function ApplicationDetailPage() {
     setError(null);
     const body: Record<string, unknown> = { status };
     if (status !== "NOT_APPLIED" && !application?.appliedDate) {
-      body.appliedDate = new Date().toISOString().slice(0, 10);
+      body.appliedDate = todayInputValue();
     }
     try {
       await patchApplication(body);
@@ -222,6 +255,30 @@ export default function ApplicationDetailPage() {
           >
             Back to applications
           </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  /*
+   * A load that failed for anything but a 404 leaves nothing to render, so it
+   * has to be answered here — the error banner further down sits below the
+   * skeleton's early return and would never be reached, leaving the page
+   * pulsing forever.
+   */
+  if (!loading && !application && error) {
+    return (
+      <AppShell>
+        <div className={`${cardClassName} p-10 text-center`}>
+          <p className="text-sm font-semibold text-ink">{error}</p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <button type="button" onClick={() => void load()} className={btnPrimarySm}>
+              Try again
+            </button>
+            <Link href="/applications" className={btnSecondarySm}>
+              Back to applications
+            </Link>
+          </div>
         </div>
       </AppShell>
     );
@@ -438,9 +495,15 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
-          {tab === "tips" && <ResumeTipsSection applicationId={id} />}
-          {tab === "resume" && <TailoredResumeSection applicationId={id} />}
-          {tab === "letter" && <CoverLetterSection applicationId={id} />}
+          <KeepAliveTab active={tab === "tips"}>
+            <ResumeTipsSection applicationId={id} />
+          </KeepAliveTab>
+          <KeepAliveTab active={tab === "resume"}>
+            <TailoredResumeSection applicationId={id} />
+          </KeepAliveTab>
+          <KeepAliveTab active={tab === "letter"}>
+            <CoverLetterSection applicationId={id} />
+          </KeepAliveTab>
 
           {tab === "questions" && (
             <QuestionsSection

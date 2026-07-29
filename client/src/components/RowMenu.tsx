@@ -18,7 +18,10 @@ export interface RowMenuItem {
  * after any selection.
  *
  * Rows are themselves links, so every trigger stops propagation — opening the
- * menu must never also navigate to the row's destination.
+ * menu must never also navigate to the row's destination. Stopping propagation
+ * is all it may do: calling preventDefault() here would cancel the default
+ * action of the `href` items as their clicks bubble through, and they'd never
+ * navigate.
  */
 export default function RowMenu({
   items,
@@ -52,10 +55,7 @@ export default function RowMenu({
     <div
       ref={containerRef}
       className="relative"
-      onClick={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-      }}
+      onClick={(e) => e.stopPropagation()}
     >
       <button
         type="button"

@@ -184,11 +184,16 @@ export default function ApplicationsPage() {
           </button>
         </header>
 
-        {addJobCard.open && (
+        {/*
+          Hidden rather than unmounted: the header button is a toggle, and
+          closing it must not throw away a typed URL or the posting an autofill
+          scrape just fetched.
+        */}
+        <div hidden={!addJobCard.open}>
           <AddJobForm
             onAdded={(application) => router.push(`/applications/${application.id}`)}
           />
-        )}
+        </div>
 
         {error && (
           <div className="rounded-xl border border-danger-ring bg-danger-soft px-4 py-3 text-sm font-medium text-red-700">
@@ -352,7 +357,12 @@ function StatusGroup({
       </button>
 
       <div id={bodyId} hidden={!open}>
-        <ul className={`${cardClassName} divide-y divide-border overflow-hidden`}>
+        {/*
+          No `overflow-hidden` here: it would clip the row overflow menu open
+          on the last row. The rows round their own outer corners instead, so
+          the hover fill still stops at the card's radius.
+        */}
+        <ul className={`${cardClassName} divide-y divide-border`}>
           {applications.map((app) => (
             <ApplicationRow
               key={app.id}
@@ -383,7 +393,7 @@ function ApplicationRow({
     .join(" · ");
 
   return (
-    <li className="relative transition hover:bg-subtle/60">
+    <li className="relative transition first:rounded-t-2xl last:rounded-b-2xl hover:bg-subtle/60">
       {/* The row is one big link; the controls on top of it stop propagation. */}
       <Link
         href={`/applications/${application.id}`}
