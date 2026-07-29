@@ -15,9 +15,6 @@ import {
   signOut as firebaseSignOut,
   sendEmailVerification,
   sendPasswordResetEmail,
-  verifyPasswordResetCode,
-  confirmPasswordReset,
-  applyActionCode,
   updatePassword,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
@@ -49,12 +46,6 @@ interface AuthContextValue {
    * reset adds a password to that same account rather than making a new one.
    */
   requestPasswordReset: (email: string) => Promise<void>;
-  /** Validates a reset link's code and returns the email it belongs to. */
-  verifyResetCode: (oobCode: string) => Promise<string>;
-  /** Completes a reset, setting the new password on the account. */
-  completePasswordReset: (oobCode: string, newPassword: string) => Promise<void>;
-  /** Applies a verify-email (or similar) action code from an emailed link. */
-  applyEmailActionCode: (oobCode: string) => Promise<void>;
   /**
    * Sets a password on the signed-in account, re-authenticating first because
    * Firebase requires a recent login. Pass `currentPassword` for accounts that
@@ -107,10 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: () => firebaseSignOut(auth),
       resendVerification: (targetUser) => sendEmailVerification(targetUser),
       requestPasswordReset: (email) => sendPasswordResetEmail(auth, email),
-      verifyResetCode: (oobCode) => verifyPasswordResetCode(auth, oobCode),
-      completePasswordReset: (oobCode, newPassword) =>
-        confirmPasswordReset(auth, oobCode, newPassword),
-      applyEmailActionCode: (oobCode) => applyActionCode(auth, oobCode),
       setPassword: async (newPassword, currentPassword) => {
         const current = auth.currentUser;
         if (!current) throw new Error("You need to be signed in to do that.");

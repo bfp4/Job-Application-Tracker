@@ -57,10 +57,6 @@ export function friendlyAuthError(err: unknown, fallback: string): string {
       return "Sign-in was cancelled.";
     case "auth/popup-blocked":
       return "Your browser blocked the sign-in popup. Allow popups and try again.";
-    case "auth/expired-action-code":
-      return "This link has expired. Request a new one.";
-    case "auth/invalid-action-code":
-      return "This link is invalid or has already been used. Request a new one.";
     case "auth/user-disabled":
       return "This account has been disabled.";
     case "auth/requires-recent-login":

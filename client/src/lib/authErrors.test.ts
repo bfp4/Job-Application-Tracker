@@ -45,16 +45,6 @@ describe("friendlyAuthError", () => {
   });
 
   it.each([
-    ["auth/expired-action-code", "This link has expired. Request a new one."],
-    [
-      "auth/invalid-action-code",
-      "This link is invalid or has already been used. Request a new one.",
-    ],
-  ])("maps %s to reset-link copy", (code, expected) => {
-    expect(friendlyAuthError({ code }, "fallback")).toBe(expected);
-  });
-
-  it.each([
     ["an unknown code", { code: "auth/some-new-thing" }],
     ["a non-object", "boom"],
     ["null", null],
