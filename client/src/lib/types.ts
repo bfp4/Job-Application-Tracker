@@ -63,6 +63,12 @@ export interface Contact {
   notes: string | null;
   linkedinStatus: LinkedinStatus;
   connectMessage: string | null;
+  /**
+   * Server-computed: the saved note still matches everything it was drafted
+   * from (this contact, the application, the posting, the resume). The API
+   * refuses a redraft in that state, so the UI disables the button.
+   */
+  connectMessageUpToDate: boolean;
   createdAt: string;
   updatedAt: string;
 }

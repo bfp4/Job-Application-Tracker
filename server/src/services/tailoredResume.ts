@@ -234,8 +234,12 @@ export async function generateTailoredResume(
     system,
     prompt: `Rewrite this resume to target the job posting below, following the rules exactly.\n\n<job_posting>\n${postingDetails}\n</job_posting>\n\n<resume>\n${truncate(resumeMarkdown, MAX_RESUME_CHARS)}\n</resume>`,
     schema: TAILORED_RESUME_SCHEMA,
-    // Full resume output is larger than the tips analysis, and adaptive
-    // thinking shares this budget with the JSON — leave generous headroom.
+    // The most involved prompt here — a whole resume rewritten against a
+    // posting, under a one-page budget. Worth testing at `low` on real output
+    // before dropping further; `high` was the old implicit default.
+    reasoning: "medium",
+    // Full resume output is larger than the tips analysis, and thinking shares
+    // this budget with the JSON — leave generous headroom.
     maxTokens: 20000,
   });
 }

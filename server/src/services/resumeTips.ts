@@ -189,8 +189,11 @@ export async function generateResumeTips(
     system,
     prompt: `Analyze how well this resume fits this job posting and produce tailored advice.\n\n<job_posting>\n${postingDetails}\n</job_posting>\n\n<resume>\n${truncate(resumeMarkdown, MAX_RESUME_CHARS)}\n</resume>`,
     schema: resumeTipsSchema(specialization),
-    // Adaptive thinking (on by default for this model) shares this budget
-    // with the JSON output, so leave generous headroom to avoid truncation.
+    // Judging a resume against a posting is the most analytical of these
+    // prompts, but `medium` covers it — `high` mostly bought longer reasoning.
+    reasoning: "medium",
+    // Thinking shares this budget with the JSON output, so leave generous
+    // headroom to avoid truncation.
     maxTokens: 16000,
   });
 }

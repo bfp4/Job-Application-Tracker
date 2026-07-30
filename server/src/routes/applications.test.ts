@@ -14,6 +14,11 @@ const { prismaMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
+// Every response carrying contacts fingerprints them against the current
+// resume; these tests are about the source field, so there isn't one.
+vi.mock("../lib/baseResume", () => ({
+  getLatestBaseResume: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = { id: "user-1" } as never;
@@ -45,8 +50,9 @@ describe("application source field", () => {
     it("stores a trimmed source on create and omits it when blank", async () => {
       prismaMock.jobPosting.findFirst.mockResolvedValue({ id: "posting-1" });
       prismaMock.application.findFirst.mockResolvedValue(null);
+      // contacts: [] mirrors applicationInclude — the route serializes them.
       prismaMock.application.create.mockImplementation(({ data }: { data: object }) =>
-        Promise.resolve({ id: "app-1", ...data })
+        Promise.resolve({ id: "app-1", contacts: [], ...data })
       );
 
       const withSource = await request(app)
@@ -81,7 +87,7 @@ describe("application source field", () => {
     it("updates source, storing blank and null as null", async () => {
       prismaMock.application.findFirst.mockResolvedValue({ id: "app-1" });
       prismaMock.application.update.mockImplementation(({ data }: { data: object }) =>
-        Promise.resolve({ id: "app-1", ...data })
+        Promise.resolve({ id: "app-1", contacts: [], ...data })
       );
 
       const set = await request(app)

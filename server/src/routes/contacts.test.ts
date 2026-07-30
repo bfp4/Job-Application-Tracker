@@ -28,7 +28,10 @@ vi.mock("../middleware/auth", () => ({
     next();
   },
 }));
-vi.mock("../services/linkedinMessage", () => ({
+// Only the model call is stubbed. The fingerprint and serializer are pure, and
+// the up-to-date gate is the behaviour under test here, so they run for real.
+vi.mock("../services/linkedinMessage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/linkedinMessage")>()),
   generateConnectMessage: generateConnectMessageMock,
 }));
 vi.mock("../lib/baseResume", () => ({
@@ -56,13 +59,32 @@ function contactRow(overrides: Record<string, unknown> = {}) {
     notes: null,
     linkedinStatus: "NONE",
     connectMessage: null,
+    connectMessageHash: null,
     ...overrides,
+  };
+}
+
+/**
+ * A contact row with the application join the routes select. Both the PATCH and
+ * the generate route need it to recompute whether a saved note is still current.
+ */
+function contactWithApplication(overrides: Record<string, unknown> = {}) {
+  return {
+    ...contactRow(overrides),
+    application: {
+      status: "APPLIED",
+      notes: "Great culture fit.",
+      jobPosting: { title: "Backend Engineer", company: { name: "Acme" } },
+    },
   };
 }
 
 describe("contacts endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Every route that serializes a contact looks the resume up to fingerprint
+    // it; individual tests override when the resume is what's under test.
+    getLatestBaseResumeMock.mockResolvedValue(null);
   });
 
   describe("POST /api/applications/:id/contacts", () => {
@@ -153,14 +175,16 @@ describe("contacts endpoints", () => {
         .send({ name: "Dana" });
 
       expect(res.status).toBe(404);
-      expect(prismaMock.contact.findFirst).toHaveBeenCalledWith({
-        where: { id: "contact-1", application: { userId: "user-1" } },
-      });
+      expect(prismaMock.contact.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "contact-1", application: { userId: "user-1" } },
+        })
+      );
       expect(prismaMock.contact.update).not.toHaveBeenCalled();
     });
 
     it("updates only the provided fields", async () => {
-      prismaMock.contact.findFirst.mockResolvedValue(contactRow());
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
       prismaMock.contact.update.mockResolvedValue(
         contactRow({ position: "Director", notes: null })
       );
@@ -178,7 +202,7 @@ describe("contacts endpoints", () => {
     });
 
     it("updates the LinkedIn status", async () => {
-      prismaMock.contact.findFirst.mockResolvedValue(contactRow());
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
       prismaMock.contact.update.mockResolvedValue(
         contactRow({ linkedinStatus: "CONNECTED" })
       );
@@ -214,16 +238,6 @@ describe("contacts endpoints", () => {
   });
 
   describe("POST /api/contacts/:id/connect-message", () => {
-    function contactWithApplication(overrides: Record<string, unknown> = {}) {
-      return {
-        ...contactRow(overrides),
-        application: {
-          status: "APPLIED",
-          notes: "Great culture fit.",
-          jobPosting: { title: "Backend Engineer", company: { name: "Acme" } },
-        },
-      };
-    }
 
     it("returns 404 for a contact the user does not own", async () => {
       prismaMock.contact.findFirst.mockResolvedValue(null);
@@ -256,11 +270,78 @@ describe("contacts endpoints", () => {
         "# Resume\nBackend engineer.",
         "SALES"
       );
+      // The hash of the inputs is stored alongside the note; the next request
+      // compares against it to refuse an identical redraft.
       expect(prismaMock.contact.update).toHaveBeenCalledWith({
         where: { id: "contact-1" },
-        data: { connectMessage: "Hi Dana, I applied for the role…" },
+        data: {
+          connectMessage: "Hi Dana, I applied for the role…",
+          connectMessageHash: expect.any(String),
+        },
       });
       expect(res.body.contact.connectMessage).toBe("Hi Dana, I applied for the role…");
+      expect(res.body.contact.connectMessageUpToDate).toBe(true);
+    });
+
+    /**
+     * Drafts a note, then replays the request against the row it produced —
+     * the same path a user takes by clicking Regenerate twice.
+     */
+    async function generateThenReplay(
+      secondRequestOverrides: Record<string, unknown> = {}
+    ) {
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
+      generateConnectMessageMock.mockResolvedValue("Hi Dana…");
+      prismaMock.contact.update.mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve(contactRow({ ...data }))
+      );
+
+      const first = await request(app).post("/api/contacts/contact-1/connect-message");
+      const saved = first.body.contact;
+
+      vi.clearAllMocks();
+      getLatestBaseResumeMock.mockResolvedValue(null);
+      prismaMock.contact.findFirst.mockResolvedValue(
+        contactWithApplication({
+          connectMessage: saved.connectMessage,
+          connectMessageHash: saved.connectMessageHash,
+          ...secondRequestOverrides,
+        })
+      );
+
+      return request(app).post("/api/contacts/contact-1/connect-message");
+    }
+
+    // The point of the hash: a second click on unchanged inputs would spend a
+    // model call reproducing the note it already has.
+    it("refuses a redraft while the saved note still matches its inputs", async () => {
+      const res = await generateThenReplay();
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain("already up to date");
+      expect(res.body.contact.connectMessageUpToDate).toBe(true);
+      // The client adopts this contact to repair a stale flag, so it has to be
+      // the same flat shape the 201 returns — not the row with its application
+      // → jobPosting → company join still attached.
+      expect(res.body.contact).not.toHaveProperty("application");
+      expect(generateConnectMessageMock).not.toHaveBeenCalled();
+      // Refused before the resume is read, so a blocked request costs one query.
+      expect(getObjectTextMock).not.toHaveBeenCalled();
+    });
+
+    it("redrafts once an input the note is written from has changed", async () => {
+      const res = await generateThenReplay({ position: "VP Engineering" });
+
+      expect(res.status).toBe(201);
+      expect(generateConnectMessageMock).toHaveBeenCalled();
+    });
+
+    // Clearing the textbox is the deliberate way back to a fresh draft.
+    it("redrafts when the saved note has been cleared", async () => {
+      const res = await generateThenReplay({ connectMessage: null });
+
+      expect(res.status).toBe(201);
+      expect(generateConnectMessageMock).toHaveBeenCalled();
     });
 
     it("still generates a message when no resume is uploaded", async () => {

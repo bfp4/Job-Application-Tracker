@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { ApplicationStatus, Prisma } from "@prisma/client";
+import { ApplicationStatus, Prisma, type CareerSpecialization } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
@@ -12,7 +12,12 @@ import {
 } from "../lib/validation";
 import { parseContactFields } from "../lib/contactInput";
 import { getObjectText } from "../lib/s3";
-import { jobPostingFingerprint } from "../lib/prompt";
+import { jobPostingFingerprint, type PostingWithCompany } from "../lib/prompt";
+import {
+  connectMessageContext,
+  serializeContact,
+  type ContactWithMessage,
+} from "../services/linkedinMessage";
 import { generateResumeTips } from "../services/resumeTips";
 import {
   generateTailoredResume,
@@ -51,6 +56,46 @@ const applicationListInclude = {
   followUps: applicationInclude.followUps,
 };
 
+/** The application shape applicationInclude produces, as far as contacts care. */
+type ApplicationWithContacts = {
+  status: ApplicationStatus;
+  notes: string | null;
+  jobPosting: PostingWithCompany;
+  contacts: ContactWithMessage[];
+};
+
+/**
+ * Attaches `connectMessageUpToDate` to each nested contact so the client can
+ * disable the regenerate button (see services/linkedinMessage.ts).
+ *
+ * Every response carrying contacts has to recompute it, not just the GET: the
+ * application's own status and notes feed the note's prompt, so a PATCH to
+ * either one re-enables the button for all of its contacts at once.
+ */
+async function serializeApplication<T extends ApplicationWithContacts>(
+  application: T,
+  userId: string,
+  specialization: CareerSpecialization | null
+): Promise<
+  Omit<T, "contacts"> & {
+    contacts: (T["contacts"][number] & { connectMessageUpToDate: boolean })[];
+  }
+> {
+  const baseResume = await getLatestBaseResume(userId);
+  const context = connectMessageContext(
+    application,
+    baseResume?.id ?? null,
+    specialization
+  );
+
+  return {
+    ...application,
+    contacts: application.contacts.map((contact) =>
+      serializeContact(contact, context)
+    ),
+  };
+}
+
 /**
  * GET /api/applications
  * List all applications for the current user, newest first.
@@ -85,7 +130,13 @@ router.get(
       return;
     }
 
-    res.json({ application });
+    res.json({
+      application: await serializeApplication(
+        application,
+        req.user!.id,
+        req.user!.careerSpecialization
+      ),
+    });
   })
 );
 
@@ -134,7 +185,14 @@ router.post(
     }
 
     if (existing) {
-      res.status(200).json({ application: existing, alreadyTracked: true });
+      res.status(200).json({
+        application: await serializeApplication(
+          existing,
+          req.user!.id,
+          req.user!.careerSpecialization
+        ),
+        alreadyTracked: true,
+      });
       return;
     }
 
@@ -148,7 +206,13 @@ router.post(
       include: applicationInclude,
     });
 
-    res.status(201).json({ application });
+    res.status(201).json({
+      application: await serializeApplication(
+        application,
+        req.user!.id,
+        req.user!.careerSpecialization
+      ),
+    });
   })
 );
 
@@ -218,7 +282,13 @@ router.patch(
       include: applicationInclude,
     });
 
-    res.json({ application });
+    res.json({
+      application: await serializeApplication(
+        application,
+        req.user!.id,
+        req.user!.careerSpecialization
+      ),
+    });
   })
 );
 
@@ -922,7 +992,9 @@ router.post(
       data: { applicationId: application.id, name, ...optionalFields },
     });
 
-    res.status(201).json({ contact });
+    // A new contact has no note yet, so the regenerate button starts enabled —
+    // no need to load the posting and resume just to compute that.
+    res.status(201).json({ contact: { ...contact, connectMessageUpToDate: false } });
   })
 );
 

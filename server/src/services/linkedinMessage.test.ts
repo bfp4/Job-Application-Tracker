@@ -5,8 +5,14 @@ const { generateStructuredMock } = vi.hoisted(() => ({
   generateStructuredMock: vi.fn(),
 }));
 
-vi.mock("../lib/anthropic", () => ({ generateStructured: generateStructuredMock }));
+// Only the call is stubbed; the model constants are real so a rename can't let
+// these tests keep asserting a model that no longer exists.
+vi.mock("../lib/anthropic", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/anthropic")>()),
+  generateStructured: generateStructuredMock,
+}));
 
+import { HAIKU } from "../lib/anthropic";
 import { generateConnectMessage } from "./linkedinMessage";
 
 const posting = makePosting();
@@ -30,6 +36,15 @@ describe("generateConnectMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     generateStructuredMock.mockResolvedValue({ message: "Hi Grace — great to connect." });
+  });
+
+  // Cost: a 300-character note from rules this explicit is the one call here
+  // that needs neither Sonnet nor a reasoning pass.
+  it("drafts on Haiku with reasoning off", async () => {
+    const { model, reasoning } = await callWith();
+
+    expect(model).toBe(HAIKU);
+    expect(reasoning).toBe("off");
   });
 
   it("keeps the 300-character ceiling and the no-pitch rule", async () => {

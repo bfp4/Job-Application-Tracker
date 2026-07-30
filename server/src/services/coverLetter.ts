@@ -208,8 +208,11 @@ export async function generateCoverLetter(
     system,
     prompt: `Write a cover letter for this candidate applying to the job posting below, following the rules exactly.\n\n<job_posting>\n${postingDetails}\n</job_posting>\n\n<resume>\n${truncate(resumeMarkdown, MAX_RESUME_CHARS)}\n</resume>`,
     schema: COVER_LETTER_SCHEMA,
-    // The letter itself is short, but adaptive thinking shares this budget with
-    // the JSON — leave headroom so the output is never truncated mid-object.
+    // Mapping real accomplishments onto a posting's needs is worth reasoning
+    // about, but not at Sonnet's default `high` — the letter is 400 words.
+    reasoning: "medium",
+    // The letter itself is short, but thinking shares this budget with the
+    // JSON — leave headroom so the output is never truncated mid-object.
     maxTokens: 12000,
   });
 }

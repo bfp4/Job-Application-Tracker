@@ -1,5 +1,5 @@
 import type { CareerSpecialization } from "@prisma/client";
-import { generateStructured } from "../lib/anthropic";
+import { HAIKU, generateStructured } from "../lib/anthropic";
 import {
   MAX_RESUME_CHARS,
   formatPostingForPrompt,
@@ -79,7 +79,13 @@ export async function generateQuestionAnswer(
     ].join("\n\n"),
     prompt: `${instruction}\n\n${sections.join("\n\n")}`,
     schema: ANSWER_SCHEMA,
-    // Adaptive thinking shares this budget with the JSON output — keep headroom.
+    // A 100-250 word answer written from materials already in the prompt. Haiku
+    // handles it, with a small thinking budget kept because the answer has to
+    // pick which resume details are relevant to the question — a judgement
+    // call, unlike the LinkedIn note's fixed formula.
+    model: HAIKU,
+    reasoning: "medium",
+    // Thinking shares this budget with the JSON output — keep headroom.
     maxTokens: 8000,
   });
 

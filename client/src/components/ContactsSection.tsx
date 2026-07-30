@@ -152,9 +152,15 @@ export default function ContactsSection({
       contact?: Contact;
       error?: string;
     };
-    if (!res.ok || !data.contact) {
+    if (!res.ok) {
+      // The up-to-date refusal carries the current contact. Adopting it repairs
+      // a stale connectMessageUpToDate — otherwise a client that thinks the
+      // note is redraftable (second tab, or an input edited and reverted) keeps
+      // an enabled button that errors on every click.
+      if (data.contact) replaceContact(data.contact);
       throw new Error(data.error ?? "Failed to generate a message.");
     }
+    if (!data.contact) throw new Error("Failed to generate a message.");
     replaceContact(data.contact);
   }
 
@@ -398,6 +404,10 @@ function ContactLinkedinPanel({
   }
 
   const overLimit = messageDraft.length > MAX_CONNECT_MESSAGE_CHARS;
+  // The API refuses a redraft while the saved note still matches its inputs, so
+  // disable the button rather than letting the click fail. Clearing the note
+  // (or editing this contact, the application, or the posting) re-enables it.
+  const upToDate = contact.connectMessageUpToDate;
 
   return (
     <div className="mt-4 border-t border-border pt-3">
@@ -462,8 +472,12 @@ function ContactLinkedinPanel({
         <button
           type="button"
           onClick={handleGenerateClick}
-          disabled={generating}
-          title="Draft a note from this posting, your resume, and where the application stands."
+          disabled={generating || upToDate}
+          title={
+            upToDate
+              ? "This note already reflects this contact, the application, and the posting. Change one of them — or clear the note — to draft a new one."
+              : "Draft a note from this posting, your resume, and where the application stands."
+          }
           className={messageDraft.trim() !== "" ? btnAiSoft : btnAiSm}
         >
           <IconSparkles size={15} />
@@ -476,6 +490,12 @@ function ContactLinkedinPanel({
         {generating && (
           <span className="text-xs font-medium text-ai">
             Reading this posting, your resume, and the application status…
+          </span>
+        )}
+        {!generating && upToDate && (
+          <span className="text-xs font-medium text-muted">
+            Up to date — edit this contact, the application, or the posting to
+            draft a new note.
           </span>
         )}
       </div>

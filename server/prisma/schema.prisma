@@ -143,6 +143,10 @@ model Contact {
   // The last AI-drafted (and possibly hand-edited) LinkedIn connection note.
   // Capped at 300 chars to match LinkedIn's connection-request limit.
   connectMessage String?
+  // Hash of the inputs the note was drafted from (see
+  // connectMessageFingerprint). The generate route refuses while it still
+  // matches, so an unchanged contact can't re-bill the model.
+  connectMessageHash String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

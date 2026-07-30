@@ -5,8 +5,14 @@ const { generateStructuredMock } = vi.hoisted(() => ({
   generateStructuredMock: vi.fn(),
 }));
 
-vi.mock("../lib/anthropic", () => ({ generateStructured: generateStructuredMock }));
+// Only the call is stubbed; the model constants are real so a rename can't let
+// these tests keep asserting a model that no longer exists.
+vi.mock("../lib/anthropic", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/anthropic")>()),
+  generateStructured: generateStructuredMock,
+}));
 
+import { HAIKU } from "../lib/anthropic";
 import { generateQuestionAnswer } from "./applicationQuestions";
 
 const posting = makePosting();
@@ -30,6 +36,15 @@ describe("generateQuestionAnswer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     generateStructuredMock.mockResolvedValue({ answer: "At Acme I…" });
+  });
+
+  // Cost: a 100-250 word answer from materials already in the prompt doesn't
+  // need Sonnet, but keeps a reasoning pass to pick the relevant experience.
+  it("drafts on Haiku with a modest reasoning budget", async () => {
+    const { model, reasoning } = await callWith();
+
+    expect(model).toBe(HAIKU);
+    expect(reasoning).toBe("medium");
   });
 
   it("passes the question, resume, and posting into the prompt", async () => {

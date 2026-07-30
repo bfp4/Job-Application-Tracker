@@ -1,6 +1,39 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODEL = "claude-sonnet-5";
+/**
+ * The two models this app calls. Sonnet writes the long-form documents (resume
+ * tips, tailored resume, cover letter); Haiku handles the short, tightly
+ * specified drafts — a 300-character LinkedIn note, an application answer — at
+ * roughly a third of Sonnet's per-token price.
+ */
+export const SONNET = "claude-sonnet-5";
+export const HAIKU = "claude-haiku-4-5";
+export type Model = typeof SONNET | typeof HAIKU;
+
+/**
+ * How hard the model reasons before answering. This is the main cost dial on
+ * these calls: reasoning tokens bill at the output rate, and left unset Sonnet
+ * reasons at `high` on every request — far more than most of these prompts need.
+ *
+ * The two model families express reasoning differently, so a level is
+ * translated per model rather than passed through:
+ *   - Sonnet 5 takes adaptive thinking plus `output_config.effort`.
+ *   - Haiku 4.5 predates `effort` (it rejects the parameter outright) and takes
+ *     a fixed thinking-token budget instead.
+ * The ladders are therefore NOT equivalent across families — choose a level per
+ * call site by looking at the output, not by matching names with another one.
+ */
+export type Reasoning = "off" | "low" | "medium" | "high";
+
+/**
+ * Haiku 4.5's stand-in for the effort ladder. 1024 is the API minimum, and the
+ * budget must also stay under `max_tokens`, which reasoningFor enforces.
+ */
+const HAIKU_THINKING_BUDGETS: Record<Exclude<Reasoning, "off">, number> = {
+  low: 1024,
+  medium: 2000,
+  high: 4000,
+};
 
 let client: Anthropic | null = null;
 
@@ -18,6 +51,38 @@ interface StructuredOptions {
   prompt: string;
   schema: Record<string, unknown>;
   maxTokens?: number;
+  /** Defaults to Sonnet. Use Haiku for short, tightly specified outputs. */
+  model?: Model;
+  /**
+   * Defaults to `medium` rather than the API's own `high`: nothing here is a
+   * hard reasoning problem, so a new call site should start cheap and be raised
+   * deliberately if its output needs it.
+   */
+  reasoning?: Reasoning;
+}
+
+/**
+ * Translates a reasoning level into the request fields the given model accepts.
+ * Only Sonnet gets `effort`; sending it to Haiku 4.5 is a 400.
+ */
+function reasoningFor(
+  model: Model,
+  reasoning: Reasoning,
+  maxTokens: number
+): { thinking: Anthropic.ThinkingConfigParam; effort?: Anthropic.OutputConfig["effort"] } {
+  if (reasoning === "off") return { thinking: { type: "disabled" } };
+
+  if (model === HAIKU) {
+    // budget_tokens must be ≥1024 and strictly below max_tokens. Cap it at half
+    // the budget so the JSON always has room to finish; if that leaves less
+    // than the 1024 floor, no budget can satisfy both — skip thinking instead
+    // of sending a request the API would reject.
+    const budget = Math.min(HAIKU_THINKING_BUDGETS[reasoning], Math.floor(maxTokens / 2));
+    if (budget < 1024) return { thinking: { type: "disabled" } };
+    return { thinking: { type: "enabled", budget_tokens: budget } };
+  }
+
+  return { thinking: { type: "adaptive" }, effort: reasoning };
 }
 
 /**
@@ -50,8 +115,9 @@ function extractStructuredJson<T>(response: Anthropic.Message): T {
   }
 
   // A response cut off by max_tokens carries truncated, unparseable JSON —
-  // fail with the real cause instead of a cryptic JSON.parse error. (On this
-  // model adaptive thinking shares the max_tokens budget, so give headroom.)
+  // fail with the real cause instead of a cryptic JSON.parse error. (Unless
+  // reasoning is "off", thinking shares the max_tokens budget with the JSON, so
+  // callers need headroom above the size of the object itself.)
   if (response.stop_reason === "max_tokens") {
     throw new Error(
       "Claude response was truncated by max_tokens before the structured output completed."
@@ -80,12 +146,19 @@ function extractStructuredJson<T>(response: Anthropic.Message): T {
  * one parsed object — and removes that failure mode.
  */
 export async function generateStructured<T>(opts: StructuredOptions): Promise<T> {
+  const model = opts.model ?? SONNET;
+  const maxTokens = opts.maxTokens ?? 4096;
+  const { thinking, effort } = reasoningFor(model, opts.reasoning ?? "medium", maxTokens);
+
   const stream = getClient().messages.stream({
-    model: MODEL,
-    max_tokens: opts.maxTokens ?? 4096,
+    model,
+    max_tokens: maxTokens,
     system: opts.system,
+    thinking,
     output_config: {
       format: { type: "json_schema", schema: opts.schema },
+      // Omitted entirely for Haiku, which has no effort parameter.
+      ...(effort ? { effort } : {}),
     },
     messages: [{ role: "user", content: opts.prompt }],
   });

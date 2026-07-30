@@ -1,9 +1,11 @@
+import { createHash } from "crypto";
 import type { ApplicationStatus, CareerSpecialization } from "@prisma/client";
-import { generateStructured } from "../lib/anthropic";
+import { HAIKU, generateStructured } from "../lib/anthropic";
 import { MAX_CONNECT_MESSAGE_CHARS } from "../lib/contactInput";
 import {
   MAX_RESUME_CHARS,
   formatPostingForPrompt,
+  jobPostingFingerprint,
   truncate,
   type PostingWithCompany,
 } from "../lib/prompt";
@@ -33,6 +35,102 @@ export interface ContactForMessage {
   name: string;
   position: string | null;
   notes: string | null;
+}
+
+/**
+ * Hash of every input this service's prompt reads. The route stores it next to
+ * the note it produced and refuses a regenerate while it still matches, so an
+ * untouched contact can't spend a model call reproducing the same note.
+ *
+ * The resume is identified by id rather than content: BaseResume rows are
+ * append-only, so a new upload means a new id — and taking the id lets the
+ * route decide to refuse before paying for the S3 read of the markdown.
+ *
+ * KEEP IN SYNC with the inputs generateConnectMessage below actually reads.
+ * A prompt input missing here makes the gate refuse regenerates the user is
+ * entitled to, which looks like the button being broken.
+ */
+export interface ConnectMessageInputs {
+  contact: ContactForMessage;
+  posting: PostingWithCompany;
+  applicationStatus: ApplicationStatus;
+  applicationNotes: string | null;
+  baseResumeId: string | null;
+  specialization: CareerSpecialization | null;
+}
+
+export function connectMessageFingerprint(input: ConnectMessageInputs): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        input.contact.name,
+        input.contact.position,
+        input.contact.notes,
+        // Covers the posting's title, company, location, salary, description,
+        // and URL — a superset of what this prompt renders, so a salary-only
+        // edit permits a regenerate that wouldn't change the note. Erring that
+        // way keeps one definition of "the posting changed" across features.
+        jobPostingFingerprint(input.posting),
+        input.applicationStatus,
+        input.applicationNotes,
+        input.baseResumeId,
+        input.specialization,
+      ])
+    )
+    .digest("hex");
+}
+
+/** The application-side inputs a note is drafted from, shared by its contacts. */
+export type ConnectMessageContext = Omit<ConnectMessageInputs, "contact">;
+
+/**
+ * Builds that shared context from an application row joined with its posting,
+ * so the routes don't each restate which application fields feed the prompt.
+ */
+export function connectMessageContext(
+  application: {
+    status: ApplicationStatus;
+    notes: string | null;
+    jobPosting: PostingWithCompany;
+  },
+  baseResumeId: string | null,
+  specialization: CareerSpecialization | null
+): ConnectMessageContext {
+  return {
+    posting: application.jobPosting,
+    applicationStatus: application.status,
+    applicationNotes: application.notes,
+    baseResumeId,
+    specialization,
+  };
+}
+
+/** The Contact fields the up-to-date check reads. */
+export type ContactWithMessage = ContactForMessage & {
+  connectMessage: string | null;
+  connectMessageHash: string | null;
+};
+
+/**
+ * Attaches `connectMessageUpToDate` to a contact on its way out of the API.
+ *
+ * The generate route refuses while a saved note still matches its inputs, so
+ * every response that carries a contact carries this too — otherwise the client
+ * can only discover the refusal by clicking the button and reading a 409.
+ * Generic over the row so Prisma's other Contact fields pass through untouched.
+ */
+export function serializeContact<T extends ContactWithMessage>(
+  contact: T,
+  context: ConnectMessageContext
+): T & { connectMessageUpToDate: boolean } {
+  return {
+    ...contact,
+    connectMessageUpToDate: Boolean(
+      contact.connectMessage &&
+        contact.connectMessageHash ===
+          connectMessageFingerprint({ ...context, contact })
+    ),
+  };
 }
 
 /**
@@ -126,7 +224,10 @@ export async function generateConnectMessage(
     ].join("\n"),
     prompt: `Write the LinkedIn connection-request note.\n\n${sections.join("\n\n")}`,
     schema: MESSAGE_SCHEMA,
-    // Adaptive thinking shares this budget with the short JSON output.
+    // The cheapest call in the app: a 300-character note from rules this
+    // explicit doesn't need Sonnet, and doesn't need to reason first either.
+    model: HAIKU,
+    reasoning: "off",
     maxTokens: 2000,
   });
 

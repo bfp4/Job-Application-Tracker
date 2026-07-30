@@ -189,11 +189,20 @@ export default function ApplicationDetailPage() {
     const postingId = application?.jobPosting?.id;
     if (!postingId) return;
 
-    const { jobPosting } = await apiJson<{ jobPosting: JobPosting }>(
-      `/api/jobs/${postingId}`,
-      { method: "PATCH", body: JSON.stringify(edits) }
+    await apiJson<{ jobPosting: JobPosting }>(`/api/jobs/${postingId}`, {
+      method: "PATCH",
+      body: JSON.stringify(edits),
+    });
+    // Re-read the application rather than merging the posting back in on its
+    // own: the posting is one of the inputs a contact's connection note is
+    // drafted from, so every contact's connectMessageUpToDate has just gone
+    // stale. Merging only jobPosting would leave those notes reported as
+    // current and their Regenerate buttons disabled — while the hint tells the
+    // user to edit the posting, which is what they just did.
+    const { application: refreshed } = await apiJson<{ application: Application }>(
+      `/api/applications/${id}`
     );
-    setApplication((prev) => (prev ? { ...prev, jobPosting } : prev));
+    setApplication(refreshed);
     setEditingPosting(false);
   }
 
