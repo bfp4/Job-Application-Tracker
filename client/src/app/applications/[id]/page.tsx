@@ -19,6 +19,7 @@ import TailoredResumeSection from "@/components/TailoredResumeSection";
 import CoverLetterSection from "@/components/CoverLetterSection";
 import QuestionsSection from "@/components/QuestionsSection";
 import ContactsSection from "@/components/ContactsSection";
+import TimelineSection from "@/components/TimelineSection";
 import JobPostingForm, { type JobPostingEdits } from "@/components/JobPostingForm";
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
@@ -54,10 +55,12 @@ import type {
   Contact,
   FollowUp,
   JobPosting,
+  TimelineEntry,
 } from "@/lib/types";
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "timeline", label: "Timeline" },
   { id: "tips", label: "Resume tips" },
   { id: "resume", label: "Tailored resume" },
   { id: "letter", label: "Cover letter" },
@@ -241,6 +244,14 @@ export default function ApplicationDetailPage() {
   function setContacts(updater: (contacts: Contact[]) => Contact[]) {
     setApplication((prev) =>
       prev ? { ...prev, contacts: updater(prev.contacts ?? []) } : prev
+    );
+  }
+
+  function setTimelineEntries(
+    updater: (entries: TimelineEntry[]) => TimelineEntry[]
+  ) {
+    setApplication((prev) =>
+      prev ? { ...prev, timelineEntries: updater(prev.timelineEntries ?? []) } : prev
     );
   }
 
@@ -504,6 +515,14 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
+          {tab === "timeline" && (
+            <TimelineSection
+              applicationId={id}
+              entries={application.timelineEntries ?? []}
+              setEntries={setTimelineEntries}
+            />
+          )}
+
           <KeepAliveTab active={tab === "tips"}>
             <ResumeTipsSection applicationId={id} />
           </KeepAliveTab>
@@ -552,6 +571,7 @@ function TabCount({
   application: Application;
 }) {
   let count: number | null = null;
+  if (tab === "timeline") count = application.timelineEntries?.length ?? 0;
   if (tab === "questions") count = application.questions?.length ?? 0;
   if (tab === "contacts") count = application.contacts?.length ?? 0;
   if (tab === "followups") {

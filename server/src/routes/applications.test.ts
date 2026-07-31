@@ -6,10 +6,12 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     application: {
       findFirst: vi.fn(),
+      findFirstOrThrow: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
     },
     jobPosting: { findFirst: vi.fn() },
+    timelineEntry: { create: vi.fn() },
   },
 }));
 
@@ -106,6 +108,116 @@ describe("application source field", () => {
       expect(prismaMock.application.update.mock.calls[1][0].data).toEqual({ source: null });
       expect(cleared.status).toBe(200);
       expect(prismaMock.application.update.mock.calls[2][0].data).toEqual({ source: null });
+    });
+  });
+
+  describe("PATCH /api/applications/:id status auto-logging", () => {
+    it("creates a timeline entry when status actually changes", async () => {
+      prismaMock.application.findFirst.mockResolvedValue({ id: "app-1", status: "APPLIED" });
+      prismaMock.application.update.mockResolvedValue({
+        id: "app-1",
+        status: "PHONE_SCREEN",
+        contacts: [],
+      });
+      prismaMock.application.findFirstOrThrow.mockResolvedValue({
+        id: "app-1",
+        status: "PHONE_SCREEN",
+        contacts: [],
+        timelineEntries: [{ id: "entry-1", status: "PHONE_SCREEN" }],
+      });
+
+      const res = await request(app)
+        .patch("/api/applications/app-1")
+        .send({ status: "PHONE_SCREEN" });
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.timelineEntry.create).toHaveBeenCalledWith({
+        data: { applicationId: "app-1", status: "PHONE_SCREEN" },
+      });
+      expect(prismaMock.application.findFirstOrThrow).toHaveBeenCalled();
+    });
+
+    it("does not log a duplicate when PATCHing the same status", async () => {
+      prismaMock.application.findFirst.mockResolvedValue({ id: "app-1", status: "PHONE_SCREEN" });
+      prismaMock.application.update.mockResolvedValue({
+        id: "app-1",
+        status: "PHONE_SCREEN",
+        contacts: [],
+      });
+
+      const res = await request(app)
+        .patch("/api/applications/app-1")
+        .send({ status: "PHONE_SCREEN" });
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.timelineEntry.create).not.toHaveBeenCalled();
+      expect(prismaMock.application.findFirstOrThrow).not.toHaveBeenCalled();
+    });
+
+    it("does not log anything when status isn't part of the PATCH", async () => {
+      prismaMock.application.findFirst.mockResolvedValue({ id: "app-1", status: "APPLIED" });
+      prismaMock.application.update.mockResolvedValue({
+        id: "app-1",
+        status: "APPLIED",
+        contacts: [],
+      });
+
+      const res = await request(app)
+        .patch("/api/applications/app-1")
+        .send({ source: "Referral" });
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.timelineEntry.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /api/applications/:id/timeline-entries", () => {
+    it("rejects a missing or invalid status", async () => {
+      const missing = await request(app)
+        .post("/api/applications/app-1/timeline-entries")
+        .send({});
+      const invalid = await request(app)
+        .post("/api/applications/app-1/timeline-entries")
+        .send({ status: "GHOSTED" });
+
+      expect(missing.status).toBe(400);
+      expect(invalid.status).toBe(400);
+      expect(prismaMock.timelineEntry.create).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 for an application the user does not own", async () => {
+      prismaMock.application.findFirst.mockResolvedValue(null);
+
+      const res = await request(app)
+        .post("/api/applications/app-1/timeline-entries")
+        .send({ status: "INTERVIEW" });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("creates a manual entry with an optional note and date", async () => {
+      prismaMock.application.findFirst.mockResolvedValue({ id: "app-1", userId: "user-1" });
+      prismaMock.timelineEntry.create.mockResolvedValue({
+        id: "entry-1",
+        applicationId: "app-1",
+        status: "INTERVIEW",
+        note: "Round 2 with the eng manager",
+        occurredAt: new Date("2026-07-20"),
+      });
+
+      const res = await request(app)
+        .post("/api/applications/app-1/timeline-entries")
+        .send({ status: "INTERVIEW", note: "Round 2 with the eng manager", occurredAt: "2026-07-20" });
+
+      expect(res.status).toBe(201);
+      expect(prismaMock.timelineEntry.create).toHaveBeenCalledWith({
+        data: {
+          applicationId: "app-1",
+          status: "INTERVIEW",
+          note: "Round 2 with the eng manager",
+          occurredAt: new Date("2026-07-20"),
+        },
+      });
     });
   });
 });

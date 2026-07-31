@@ -110,12 +110,32 @@ model Application {
   coverLetter    CoverLetter?
   questions      ApplicationQuestion[]
   contacts       Contact[]
+  timelineEntries TimelineEntry[]
 
   @@unique([userId, jobPostingId])
   @@index([userId])
   // The daily reminder Lambda scans for status = NOT_APPLIED across all users,
   // skipping those already nudged today.
   @@index([status, nudgeSentAt])
+}
+
+// One row per stage an application has occupied. Created automatically
+// whenever PATCH /api/applications/:id changes `status`, and editable
+// (note/occurredAt) or addable by hand afterward — e.g. to log a phone-screen
+// or interview note, or backfill history from before this model existed.
+model TimelineEntry {
+  id            String            @id @default(cuid())
+  applicationId String
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        ApplicationStatus
+  note          String?
+  // When this stage actually happened — defaults to "now" but is editable, so
+  // the user can correct or backfill a date.
+  occurredAt    DateTime          @default(now())
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([applicationId])
 }
 
 // Where the user is in the LinkedIn networking flow with a contact.

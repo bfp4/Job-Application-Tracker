@@ -73,6 +73,20 @@ export interface Contact {
   updatedAt: string;
 }
 
+/**
+ * One stage an application has occupied. Created automatically when its
+ * status changes; editable (note/date) and addable by hand afterward.
+ */
+export interface TimelineEntry {
+  id: string;
+  applicationId: string;
+  status: ApplicationStatus;
+  note: string | null;
+  occurredAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A question from the application form, with a (possibly AI-drafted) answer. */
 export interface ApplicationQuestion {
   id: string;
@@ -97,6 +111,7 @@ export interface Application {
   followUps?: FollowUp[];
   questions?: ApplicationQuestion[];
   contacts?: Contact[];
+  timelineEntries?: TimelineEntry[];
 }
 
 export interface BaseResume {

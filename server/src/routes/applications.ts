@@ -47,6 +47,7 @@ const applicationInclude = {
   followUps: { orderBy: { followUpDate: "asc" as const } },
   questions: { orderBy: { createdAt: "asc" as const } },
   contacts: { orderBy: { createdAt: "asc" as const } },
+  timelineEntries: { orderBy: { occurredAt: "asc" as const } },
 };
 
 // The list/dashboard views never render questions (they can carry multi-
@@ -276,19 +277,89 @@ router.patch(
       return;
     }
 
+    // A real status change gets its own timeline entry — re-saving the same
+    // status (or PATCHing only other fields) doesn't log a duplicate.
+    const statusChanged =
+      typeof data.status === "string" && data.status !== existing.status;
+
     const application = await prisma.application.update({
       where: { id: existing.id },
       data,
       include: applicationInclude,
     });
 
+    if (statusChanged) {
+      await prisma.timelineEntry.create({
+        data: { applicationId: application.id, status: data.status as ApplicationStatus },
+      });
+    }
+
     res.json({
       application: await serializeApplication(
-        application,
+        statusChanged
+          ? await prisma.application.findFirstOrThrow({
+              where: { id: application.id },
+              include: applicationInclude,
+            })
+          : application,
         req.user!.id,
         req.user!.careerSpecialization
       ),
     });
+  })
+);
+
+/**
+ * POST /api/applications/:id/timeline-entries
+ * Add a timeline entry by hand — to log something the status dropdown can't
+ * capture (e.g. a specific interview round), or to backfill history.
+ */
+router.post(
+  "/:id/timeline-entries",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { status, note, occurredAt } = req.body ?? {};
+
+    if (!isApplicationStatus(status)) {
+      res.status(400).json({
+        error: `\`status\` must be one of: ${VALID_STATUSES.join(", ")}.`,
+      });
+      return;
+    }
+
+    if (note !== undefined && note !== null && typeof note !== "string") {
+      res.status(400).json({ error: "`note` must be a string or null." });
+      return;
+    }
+
+    let parsedOccurredAt: Date | null | undefined;
+    if (occurredAt !== undefined) {
+      parsedOccurredAt = parseNullableDate(occurredAt);
+      if (parsedOccurredAt === undefined || parsedOccurredAt === null) {
+        res.status(400).json({ error: "`occurredAt` must be a valid date." });
+        return;
+      }
+    }
+
+    const application = await prisma.application.findFirst({
+      where: { id: req.params.id, userId: req.user!.id },
+    });
+
+    if (!application) {
+      res.status(404).json({ error: "Application not found." });
+      return;
+    }
+
+    const timelineEntry = await prisma.timelineEntry.create({
+      data: {
+        applicationId: application.id,
+        status,
+        note: note ?? null,
+        ...(parsedOccurredAt ? { occurredAt: parsedOccurredAt } : {}),
+      },
+    });
+
+    res.status(201).json({ timelineEntry });
   })
 );
 
