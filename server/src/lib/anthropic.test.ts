@@ -10,7 +10,13 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
-import { HAIKU, SONNET, ContentRefusedError, generateStructured } from "./anthropic";
+import {
+  HAIKU,
+  SONNET,
+  ContentRefusedError,
+  generateStructured,
+  isBilledModelFailure,
+} from "./anthropic";
 
 /** Makes stream().finalMessage() resolve to the given Message-shaped object. */
 function respondWith(message: Record<string, unknown>) {
@@ -149,5 +155,54 @@ describe("generateStructured", () => {
     respondWith({ stop_reason: "end_turn", content: [] });
 
     await expect(call()).rejects.toThrow(/no text block \(stop_reason: end_turn\)/);
+  });
+
+  // Quota accounting refunds a reservation only when the attempt cost nothing,
+  // so which side of the billing boundary a failure falls on has to be exact.
+  describe("isBilledModelFailure", () => {
+    /** Runs a call that is expected to fail and returns what it threw. */
+    async function failureFrom(message: Record<string, unknown>): Promise<unknown> {
+      respondWith(message);
+      return call().then(
+        () => {
+          throw new Error("expected the call to fail");
+        },
+        (err: unknown) => err
+      );
+    }
+
+    it("marks every failure that follows a completed response", async () => {
+      const refusal = await failureFrom({ stop_reason: "refusal", content: [] });
+      const truncated = await failureFrom({
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: '{"ok":tr' }],
+      });
+      const noText = await failureFrom({ stop_reason: "end_turn", content: [] });
+      const unparseable = await failureFrom({
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "not json" }],
+      });
+
+      // All four arrive as a successful, billed HTTP 200 and only then throw.
+      expect(refusal).toBeInstanceOf(ContentRefusedError);
+      for (const err of [refusal, truncated, noText, unparseable]) {
+        expect(isBilledModelFailure(err)).toBe(true);
+      }
+    });
+
+    it("leaves failures that never reached the model unmarked", async () => {
+      streamMock.mockImplementationOnce(() => {
+        throw new Error("socket hang up");
+      });
+
+      await expect(call()).rejects.toThrow("socket hang up");
+      expect(isBilledModelFailure(new Error("socket hang up"))).toBe(false);
+    });
+
+    it("is false for non-errors", () => {
+      expect(isBilledModelFailure(null)).toBe(false);
+      expect(isBilledModelFailure(undefined)).toBe(false);
+      expect(isBilledModelFailure("refusal")).toBe(false);
+    });
   });
 });

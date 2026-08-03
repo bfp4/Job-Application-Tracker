@@ -13,6 +13,8 @@ const { prismaMock, getObjectTextMock, generateQuestionAnswerMock } = vi.hoisted
       deleteMany: vi.fn(),
     },
     baseResume: { findFirst: vi.fn() },
+    user: { updateMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
   getObjectTextMock: vi.fn(),
   generateQuestionAnswerMock: vi.fn(),
@@ -22,7 +24,10 @@ vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../lib/s3", () => ({ getObjectText: getObjectTextMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1", careerSpecialization: "CONSULTING" } as never;
+    // BASIC, so the quota reservation actually runs — reserveAiCall
+    // short-circuits to "allowed" for every other tier, and an omitted tier
+    // would silently route these tests down that unlimited path.
+    req.user = { id: "user-1", careerSpecialization: "CONSULTING", tier: "BASIC" } as never;
     next();
   },
 }));
@@ -57,6 +62,8 @@ describe("application questions endpoints", () => {
     prismaMock.baseResume.findFirst.mockResolvedValue(baseResume);
     getObjectTextMock.mockResolvedValue("# Resume\nExperience...");
     generateQuestionAnswerMock.mockResolvedValue("I am proud of X.");
+    // Default: the atomic quota-reservation UPDATE succeeds (returns a row).
+    prismaMock.$queryRaw.mockResolvedValue([{ id: "user-1" }]);
   });
 
   describe("POST /api/applications/:id/questions", () => {
@@ -295,6 +302,48 @@ describe("application questions endpoints", () => {
 
       expect(res.status).toBe(400);
       expect(generateQuestionAnswerMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 429 without generating once the daily limit is reached", async () => {
+      prismaMock.applicationQuestion.findFirst.mockResolvedValue(ownedQuestionWithContext());
+      // The conditional UPDATE matched no row: today's count is already at the
+      // cap, so the reservation is refused.
+      prismaMock.$queryRaw.mockResolvedValue([]);
+
+      const res = await request(app).post("/api/questions/question-1/answer");
+
+      expect(res.status).toBe(429);
+      expect(res.body.code).toBe("AI_QUOTA_EXCEEDED");
+      expect(generateQuestionAnswerMock).not.toHaveBeenCalled();
+      expect(prismaMock.applicationQuestion.update).not.toHaveBeenCalled();
+    });
+
+    it("refunds the reservation when the attempt fails before reaching the model", async () => {
+      prismaMock.applicationQuestion.findFirst.mockResolvedValue(ownedQuestionWithContext());
+      // Nothing was billed, so retrying is free and the call must come back.
+      getObjectTextMock.mockRejectedValueOnce(new Error("s3 read failed"));
+
+      const res = await request(app).post("/api/questions/question-1/answer");
+
+      expect(res.status).toBe(500);
+      expect(generateQuestionAnswerMock).not.toHaveBeenCalled();
+      expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+        where: { id: "user-1", aiCallsUsedToday: { gt: 0 } },
+        data: { aiCallsUsedToday: { decrement: 1 } },
+      });
+    });
+
+    it("does not refund when the save fails after a billed generation", async () => {
+      prismaMock.applicationQuestion.findFirst.mockResolvedValue(ownedQuestionWithContext());
+      // Claude answered and was paid for; only the write failed. Refunding
+      // here would let a write that fails every time be replayed for free.
+      prismaMock.applicationQuestion.update.mockRejectedValueOnce(new Error("pool timeout"));
+
+      const res = await request(app).post("/api/questions/question-1/answer");
+
+      expect(res.status).toBe(500);
+      expect(generateQuestionAnswerMock).toHaveBeenCalled();
+      expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
     });
   });
 });

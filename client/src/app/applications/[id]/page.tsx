@@ -176,7 +176,9 @@ export default function ApplicationDetailPage() {
    */
   async function handleStatusChange(status: ApplicationStatus) {
     setError(null);
-    const body: Record<string, unknown> = { status };
+    // occurredAt dates the timeline entry the server logs for this change —
+    // the browser's calendar day, for the same reason appliedDate uses it.
+    const body: Record<string, unknown> = { status, occurredAt: todayInputValue() };
     if (status !== "NOT_APPLIED" && !application?.appliedDate) {
       body.appliedDate = todayInputValue();
     }

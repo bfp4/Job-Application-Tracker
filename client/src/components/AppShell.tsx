@@ -10,13 +10,22 @@ import {
   IconDashboard,
   IconLogOut,
   IconSettings,
+  IconUsers,
 } from "@/components/icons";
 
-const NAV_LINKS = [
+const BASE_NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard", Icon: IconDashboard },
   { href: "/applications", label: "Applications", Icon: IconBriefcase },
   { href: "/settings", label: "Settings", Icon: IconSettings },
 ];
+
+const ADMIN_NAV_LINK = { href: "/admin", label: "Admin", Icon: IconUsers };
+
+/** The nav destinations for the current user — Admin only shows for tier ADMIN. */
+function useNavLinks() {
+  const { appUser } = useAuth();
+  return appUser?.tier === "ADMIN" ? [...BASE_NAV_LINKS, ADMIN_NAV_LINK] : BASE_NAV_LINKS;
+}
 
 /**
  * Layout for every authenticated page: redirects signed-out visitors to
@@ -28,6 +37,23 @@ const NAV_LINKS = [
  */
 export default function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useRequireAuth();
+  const { refreshAppUserIfStale } = useAuth();
+  const pathname = usePathname();
+
+  // Backstop for drift the app can't observe locally — a tier changed by an
+  // admin, or a call spent in another tab. The badge's own accuracy is
+  // already handled by the onAiUsage subscription in AuthContext, which
+  // refreshes the moment a generation succeeds anywhere.
+  //
+  // Deliberately staleness-gated rather than firing per navigation: that made
+  // every in-app navigation a GET /api/user/me (plus its premiumRequest
+  // lookup) and duplicated the fetch AuthProvider already does on load, which
+  // pushed an active session toward the 300-req/15-min per-IP limiter — where
+  // a 429 breaks unrelated requests, not just this one.
+  useEffect(() => {
+    if (!loading && user) void refreshAppUserIfStale();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, loading, user]);
 
   if (loading || !user) {
     return (
@@ -79,6 +105,7 @@ function useIsActive() {
 
 function Sidebar() {
   const isActive = useIsActive();
+  const navLinks = useNavLinks();
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface lg:flex">
@@ -87,7 +114,7 @@ function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {NAV_LINKS.map(({ href, label, Icon }) => {
+        {navLinks.map(({ href, label, Icon }) => {
           const active = isActive(href);
           return (
             <Link
@@ -129,7 +156,8 @@ function TopBar() {
       <div className="lg:pl-60">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Wordmark className="lg:hidden" />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
+            <UsageBadge />
             <AccountMenu />
           </div>
         </div>
@@ -140,6 +168,7 @@ function TopBar() {
 
 function MobileTabBar() {
   const isActive = useIsActive();
+  const navLinks = useNavLinks();
 
   return (
     <nav
@@ -148,7 +177,7 @@ function MobileTabBar() {
       aria-label="Primary"
     >
       <div className="flex">
-        {NAV_LINKS.map(({ href, label, Icon }) => {
+        {navLinks.map(({ href, label, Icon }) => {
           const active = isActive(href);
           return (
             <Link
@@ -166,6 +195,28 @@ function MobileTabBar() {
         })}
       </div>
     </nav>
+  );
+}
+
+/**
+ * Persistent "X/10 AI calls left today" pill for Basic-tier users — Premium
+ * and Admin are unlimited, so it renders nothing for them.
+ */
+function UsageBadge() {
+  const { appUser } = useAuth();
+
+  if (!appUser || appUser.tier !== "BASIC") return null;
+
+  const used = appUser.aiCallsUsedToday;
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-subtle px-3 py-1.5 text-xs font-semibold text-muted"
+      title={`${used} of 10 AI calls used today`}
+    >
+      {used}/10 <span className="hidden sm:inline">AI calls used today</span>
+      <span className="sm:hidden">today</span>
+    </span>
   );
 }
 

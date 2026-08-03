@@ -133,11 +133,19 @@ export type CareerSpecialization =
   | "DESIGN"
   | "DATA_ANALYTICS";
 
+/** A user's access level. ADMIN is never settable through the API. */
+export type UserTier = "BASIC" | "PREMIUM" | "ADMIN";
+
 /** A user's editable settings, from GET/PATCH /api/user/me. */
 export interface UserSettings {
   id: string;
   email: string;
   careerSpecialization: CareerSpecialization;
+  tier: UserTier;
+  aiCallsUsedToday: number;
+  /** Only meaningful for BASIC — null for PREMIUM/ADMIN (unlimited). */
+  aiCallsRemaining: number | null;
+  pendingPremiumRequest: boolean;
 }
 
 /** A specialization choice for the Settings dropdown (server-provided). */

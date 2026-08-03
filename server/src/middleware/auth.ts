@@ -89,3 +89,15 @@ export async function authenticate(
     res.status(401).json({ error: "Invalid or expired token." });
   }
 }
+
+/**
+ * Express middleware that restricts a route to ADMIN-tier users. Must run
+ * after `authenticate` (relies on req.user being populated).
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (req.user?.tier !== "ADMIN") {
+    res.status(403).json({ error: "Admin access required." });
+    return;
+  }
+  next();
+}

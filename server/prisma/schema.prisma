@@ -23,6 +23,22 @@ enum CareerSpecialization {
   DATA_ANALYTICS
 }
 
+// A user's access level. BASIC is capped at 10 AI calls/day (see
+// aiCallsUsedToday); PREMIUM and ADMIN are unlimited. ADMIN is never settable
+// via the API — only by direct DB edit — so the admin UI only ever toggles
+// BASIC <-> PREMIUM.
+enum UserTier {
+  BASIC
+  PREMIUM
+  ADMIN
+}
+
+enum PremiumRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
 model User {
   id                   String               @id @default(cuid())
   firebaseUid          String               @unique
@@ -30,9 +46,44 @@ model User {
   createdAt            DateTime             @default(now())
   // The career field the user wants their AI output specialized for (see enum above).
   careerSpecialization CareerSpecialization @default(GENERAL)
+  tier                 UserTier             @default(BASIC)
+  // Successful AI calls made on aiCallsDate. Reset to 0 whenever a request
+  // comes in on a later UTC day. Only meaningful for BASIC (PREMIUM/ADMIN
+  // never check or increment it).
+  aiCallsUsedToday     Int                  @default(0)
+  aiCallsDate          DateTime?
   baseResumes          BaseResume[]
   applications         Application[]
   jobPostings          JobPosting[]
+  premiumRequests      PremiumRequest[]
+}
+
+// A basic user's ask to be upgraded to PREMIUM, submitted from Settings and
+// reviewed by an admin on the admin page.
+//
+// DB-only constraint not expressible here: a partial unique index enforces
+// at most one PENDING row per userId (migration
+// 20260802000000_premium_request_pending_unique) — Prisma's schema DSL can't
+// declare a filtered/partial index, so it only exists in that migration.
+//
+// WARNING: because this file doesn't mention that index, `prisma migrate dev`
+// reads it as drift and will put a DROP INDEX
+// "PremiumRequest_userId_pending_unique" in the *next* migration it generates,
+// whatever that migration was actually for. Delete that line before applying —
+// dropping it turns the P2002 handler in routes/user.ts into dead code and
+// lets a double-submit create two pending requests. src/lib/migrations.test.ts
+// fails if a migration ever leaves the index dropped.
+model PremiumRequest {
+  id         String               @id @default(cuid())
+  userId     String
+  user       User                 @relation(fields: [userId], references: [id])
+  message    String
+  status     PremiumRequestStatus @default(PENDING)
+  createdAt  DateTime             @default(now())
+  resolvedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
 }
 
 model BaseResume {
@@ -129,8 +180,12 @@ model TimelineEntry {
   application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   status        ApplicationStatus
   note          String?
-  // When this stage actually happened — defaults to "now" but is editable, so
-  // the user can correct or backfill a date.
+  // When this stage actually happened, as a calendar date stored at UTC
+  // midnight (like appliedDate/followUpDate) — editable, so the user can
+  // correct or backfill it. Both write paths set this explicitly from the
+  // client's calendar day; the now() default is a floor for direct API
+  // clients, not something application code should fall through to, since a
+  // real instant renders as the next day west of UTC.
   occurredAt    DateTime          @default(now())
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt

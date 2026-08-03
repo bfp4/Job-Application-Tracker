@@ -18,7 +18,7 @@ import CompanyInput from "@/components/CompanyInput";
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayInputValue } from "@/lib/format";
 import {
   SORT_OPTIONS,
   visibleApplications as selectVisibleApplications,
@@ -133,7 +133,11 @@ export default function ApplicationsPage() {
     try {
       const res = await apiFetch(`/api/applications/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status }),
+        // occurredAt dates the timeline entry the server logs for this change.
+        // Sent from here because only the browser knows the user's calendar
+        // day — the server's UTC day is already tomorrow for an evening change
+        // west of UTC.
+        body: JSON.stringify({ status, occurredAt: todayInputValue() }),
       });
       if (!res.ok) throw new Error("Update failed.");
     } catch {

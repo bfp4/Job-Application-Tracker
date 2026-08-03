@@ -128,13 +128,62 @@ describe("application source field", () => {
 
       const res = await request(app)
         .patch("/api/applications/app-1")
-        .send({ status: "PHONE_SCREEN" });
+        .send({ status: "PHONE_SCREEN", occurredAt: "2026-08-03" });
 
       expect(res.status).toBe(200);
       expect(prismaMock.timelineEntry.create).toHaveBeenCalledWith({
-        data: { applicationId: "app-1", status: "PHONE_SCREEN" },
+        data: {
+          applicationId: "app-1",
+          status: "PHONE_SCREEN",
+          occurredAt: new Date("2026-08-03"),
+        },
       });
       expect(prismaMock.application.findFirstOrThrow).toHaveBeenCalled();
+    });
+
+    it("dates the entry at UTC midnight when the client sends no occurredAt", async () => {
+      prismaMock.application.findFirst.mockResolvedValue({ id: "app-1", status: "APPLIED" });
+      prismaMock.application.update.mockResolvedValue({
+        id: "app-1",
+        status: "PHONE_SCREEN",
+        contacts: [],
+      });
+      prismaMock.application.findFirstOrThrow.mockResolvedValue({
+        id: "app-1",
+        status: "PHONE_SCREEN",
+        contacts: [],
+        timelineEntries: [],
+      });
+
+      const res = await request(app)
+        .patch("/api/applications/app-1")
+        .send({ status: "PHONE_SCREEN" });
+
+      expect(res.status).toBe(200);
+      // Never the column's now() default: a real instant renders as the next
+      // day for anyone west of UTC changing status in the evening.
+      const { occurredAt } = prismaMock.timelineEntry.create.mock.calls[0][0].data;
+      expect(occurredAt).toBeInstanceOf(Date);
+      expect(occurredAt.toISOString()).toMatch(/T00:00:00\.000Z$/);
+    });
+
+    it("rejects an unparseable occurredAt", async () => {
+      const res = await request(app)
+        .patch("/api/applications/app-1")
+        .send({ status: "PHONE_SCREEN", occurredAt: "not-a-date" });
+
+      expect(res.status).toBe(400);
+      expect(prismaMock.application.update).not.toHaveBeenCalled();
+      expect(prismaMock.timelineEntry.create).not.toHaveBeenCalled();
+    });
+
+    it("does not treat occurredAt alone as a field to update", async () => {
+      const res = await request(app)
+        .patch("/api/applications/app-1")
+        .send({ occurredAt: "2026-08-03" });
+
+      expect(res.status).toBe(400);
+      expect(prismaMock.application.update).not.toHaveBeenCalled();
     });
 
     it("does not log a duplicate when PATCHing the same status", async () => {

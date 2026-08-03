@@ -12,6 +12,7 @@ import contactsRouter from "./routes/contacts";
 import timelineEntriesRouter from "./routes/timelineEntries";
 import jobsRouter from "./routes/jobs";
 import userRouter from "./routes/user";
+import adminRouter from "./routes/admin";
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use("/api/contacts", contactsRouter);
 app.use("/api/timeline-entries", timelineEntriesRouter);
 app.use("/api/jobs", jobsRouter);
 app.use("/api/user", userRouter);
+app.use("/api/admin", adminRouter);
 
 // Central error middleware — asyncHandler routes rejected promises here.
 app.use(errorHandler);

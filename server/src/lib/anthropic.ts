@@ -102,6 +102,40 @@ export class ContentRefusedError extends Error {
 }
 
 /**
+ * Marks an error as raised *after* Claude returned a response — which means
+ * the call was billed even though it produced nothing usable.
+ *
+ * A symbol rather than a named property so the tag can never leak into a JSON
+ * error body, and so it survives on error types this module doesn't own (a
+ * JSON.parse SyntaxError can't be re-classed without discarding its message).
+ *
+ * Quota accounting reads this via `isBilledModelFailure`: a refund is only
+ * safe when the attempt cost nothing. See `releaseAiCallOnFailure`.
+ */
+const BILLED_MODEL_CALL = Symbol("billedModelCall");
+
+function markBilledModelFailure<E>(err: E): E {
+  if (typeof err === "object" && err !== null) {
+    (err as Record<symbol, unknown>)[BILLED_MODEL_CALL] = true;
+  }
+  return err;
+}
+
+/**
+ * True for errors thrown after a completed, billed model response — a refusal,
+ * a max_tokens truncation, or unparseable output. Distinguishes "we paid and
+ * got nothing" from "we never reached the model" (missing API key, transport
+ * failure), which are free to retry.
+ */
+export function isBilledModelFailure(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as Record<symbol, unknown>)[BILLED_MODEL_CALL] === true
+  );
+}
+
+/**
  * Structured outputs guarantees the response's *final* text block conforms to
  * the schema — earlier text blocks may exist (e.g. a stated plan before tool
  * calls), so this takes the last one, not the first.
@@ -163,5 +197,13 @@ export async function generateStructured<T>(opts: StructuredOptions): Promise<T>
     messages: [{ role: "user", content: opts.prompt }],
   });
 
-  return extractStructuredJson<T>(await stream.finalMessage());
+  // Once finalMessage() resolves, the call has been billed regardless of what
+  // it contains — a refusal and a truncation both arrive as a successful
+  // response. Everything from here on is a paid-for failure, so tag it.
+  const response = await stream.finalMessage();
+  try {
+    return extractStructuredJson<T>(response);
+  } catch (err) {
+    throw markBilledModelFailure(err);
+  }
 }

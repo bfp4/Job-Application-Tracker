@@ -11,6 +11,8 @@ const { prismaMock } = vi.hoisted(() => ({
       update: vi.fn(),
       deleteMany: vi.fn(),
     },
+    user: { updateMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -24,7 +26,10 @@ const { generateConnectMessageMock, getLatestBaseResumeMock, getObjectTextMock }
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1", careerSpecialization: "SALES" } as never;
+    // BASIC, so the quota reservation below actually runs — reserveAiCall
+    // short-circuits to "allowed" for every other tier, and an omitted tier
+    // would silently route these tests down that unlimited path.
+    req.user = { id: "user-1", careerSpecialization: "SALES", tier: "BASIC" } as never;
     next();
   },
 }));
@@ -85,6 +90,8 @@ describe("contacts endpoints", () => {
     // Every route that serializes a contact looks the resume up to fingerprint
     // it; individual tests override when the resume is what's under test.
     getLatestBaseResumeMock.mockResolvedValue(null);
+    // Default: the atomic quota-reservation UPDATE succeeds (returns a row).
+    prismaMock.$queryRaw.mockResolvedValue([{ id: "user-1" }]);
   });
 
   describe("POST /api/applications/:id/contacts", () => {
@@ -364,6 +371,50 @@ describe("contacts endpoints", () => {
         null,
         "SALES"
       );
+    });
+
+    it("returns 429 without generating once the daily limit is reached", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
+      // The conditional UPDATE matched no row: today's count is already at the
+      // cap, so the reservation is refused.
+      prismaMock.$queryRaw.mockResolvedValue([]);
+
+      const res = await request(app).post("/api/contacts/contact-1/connect-message");
+
+      expect(res.status).toBe(429);
+      expect(res.body.code).toBe("AI_QUOTA_EXCEEDED");
+      expect(generateConnectMessageMock).not.toHaveBeenCalled();
+      expect(prismaMock.contact.update).not.toHaveBeenCalled();
+    });
+
+    it("refunds the reservation when the attempt fails before reaching the model", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
+      getLatestBaseResumeMock.mockResolvedValue({ markdownS3Key: "resume.md" });
+      // Nothing was billed, so retrying is free and the call must come back.
+      getObjectTextMock.mockRejectedValueOnce(new Error("s3 read failed"));
+
+      const res = await request(app).post("/api/contacts/contact-1/connect-message");
+
+      expect(res.status).toBe(500);
+      expect(generateConnectMessageMock).not.toHaveBeenCalled();
+      expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+        where: { id: "user-1", aiCallsUsedToday: { gt: 0 } },
+        data: { aiCallsUsedToday: { decrement: 1 } },
+      });
+    });
+
+    it("does not refund when the save fails after a billed generation", async () => {
+      prismaMock.contact.findFirst.mockResolvedValue(contactWithApplication());
+      generateConnectMessageMock.mockResolvedValue("Hi Dana…");
+      // Claude answered and was paid for; only the write failed. Refunding
+      // here would let a write that fails every time be replayed for free.
+      prismaMock.contact.update.mockRejectedValueOnce(new Error("pool timeout"));
+
+      const res = await request(app).post("/api/contacts/contact-1/connect-message");
+
+      expect(res.status).toBe(500);
+      expect(generateConnectMessageMock).toHaveBeenCalled();
+      expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
     });
   });
 

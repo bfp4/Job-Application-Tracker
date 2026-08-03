@@ -9,10 +9,18 @@ import { useAuth } from "@/context/AuthContext";
 import {
   btnPrimarySm,
   cardClassName,
+  inputClassName,
   labelClassName,
   selectClassName,
 } from "@/lib/ui";
-import { IconAlert, IconFile, IconSparkles, IconUpload } from "@/components/icons";
+import {
+  IconAlert,
+  IconCheckCircle,
+  IconClock,
+  IconFile,
+  IconSparkles,
+  IconUpload,
+} from "@/components/icons";
 import type {
   BaseResume,
   CareerSpecialization,
@@ -21,7 +29,7 @@ import type {
 } from "@/lib/types";
 
 export default function SettingsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshAppUser } = useAuth();
 
   const [baseResume, setBaseResume] = useState<BaseResume | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -34,6 +42,9 @@ export default function SettingsPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [premiumMessage, setPremiumMessage] = useState("");
+  const [submittingPremiumRequest, setSubmittingPremiumRequest] = useState(false);
+  const [premiumRequestError, setPremiumRequestError] = useState<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -85,6 +96,29 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save specialization.");
     } finally {
       setSavingSpecialization(false);
+    }
+  }
+
+  async function handleRequestPremium() {
+    if (!premiumMessage.trim()) return;
+    setSubmittingPremiumRequest(true);
+    setPremiumRequestError(null);
+    try {
+      const res = await apiFetch("/api/user/premium-requests", {
+        method: "POST",
+        body: JSON.stringify({ message: premiumMessage.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to submit request.");
+      setSettings(data.user as UserSettings);
+      setPremiumMessage("");
+      await refreshAppUser();
+    } catch (err) {
+      setPremiumRequestError(
+        err instanceof Error ? err.message : "Failed to submit request."
+      );
+    } finally {
+      setSubmittingPremiumRequest(false);
     }
   }
 
@@ -262,6 +296,70 @@ export default function SettingsPage() {
                   already written keeps the wording it was given — regenerate it to pick
                   up the new field.
                 </p>
+              </section>
+            )}
+
+            {settings && (
+              <section className={`${cardClassName} p-5`}>
+                <h2 className="text-base font-bold text-ink">Premium access</h2>
+
+                {settings.tier === "ADMIN" ? (
+                  <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-emerald-600">
+                    <IconCheckCircle size={16} />
+                    You have Admin access — unlimited AI features.
+                  </p>
+                ) : settings.tier === "PREMIUM" ? (
+                  <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-emerald-600">
+                    <IconCheckCircle size={16} />
+                    You have Premium access — unlimited AI features.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm text-muted">
+                      Basic accounts get {settings.aiCallsRemaining ?? 0} of 10 AI calls
+                      remaining today (resume tips, tailored resumes, cover letters,
+                      drafted answers and LinkedIn notes all count). Request premium
+                      for unlimited use.
+                    </p>
+
+                    {settings.pendingPremiumRequest ? (
+                      <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-amber-600">
+                        <IconClock size={16} />
+                        Your premium request is pending review.
+                      </p>
+                    ) : (
+                      <div className="mt-4">
+                        <label htmlFor="premium-message" className={labelClassName}>
+                          Tell us why you&apos;d like premium access
+                        </label>
+                        <textarea
+                          id="premium-message"
+                          value={premiumMessage}
+                          onChange={(e) => setPremiumMessage(e.target.value)}
+                          rows={3}
+                          // Mirrors PREMIUM_REQUEST_MESSAGE_MAX on the server,
+                          // so the cap stops the typing rather than the submit.
+                          maxLength={2000}
+                          placeholder="What are you using JobTracker for?"
+                          className={`mt-1.5 w-full ${inputClassName}`}
+                        />
+                        {premiumRequestError && (
+                          <p className="mt-2 text-xs font-semibold text-red-600">
+                            {premiumRequestError}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleRequestPremium}
+                          disabled={submittingPremiumRequest || !premiumMessage.trim()}
+                          className={`mt-3 ${btnPrimarySm}`}
+                        >
+                          {submittingPremiumRequest ? "Submitting…" : "Request premium access"}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </section>
             )}
 

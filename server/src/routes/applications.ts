@@ -1,8 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { ApplicationStatus, Prisma, type CareerSpecialization } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
+import { AI_QUOTA_EXCEEDED_RESPONSE, releaseAiCallOnFailure, reserveAiCall } from "../middleware/quota";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
+import { startOfUtcDay } from "../lib/dates";
 import { getLatestBaseResume } from "../lib/baseResume";
 import { createInFlightGuard } from "../lib/inFlight";
 import {
@@ -225,7 +227,7 @@ router.patch(
   "/:id",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const { status, notes, source, appliedDate } = req.body ?? {};
+    const { status, notes, source, appliedDate, occurredAt } = req.body ?? {};
     const data: Prisma.ApplicationUpdateInput = {};
 
     if (status !== undefined) {
@@ -263,6 +265,19 @@ router.patch(
       data.appliedDate = parsed;
     }
 
+    // The date to file the auto-logged timeline entry under. Deliberately not
+    // part of `data` — it belongs to the TimelineEntry, and on its own it isn't
+    // an update, so it mustn't satisfy the "no valid fields" check below.
+    let parsedOccurredAt: Date | undefined;
+    if (occurredAt !== undefined) {
+      const parsed = parseNullableDate(occurredAt);
+      if (!parsed) {
+        res.status(400).json({ error: "`occurredAt` must be a valid date." });
+        return;
+      }
+      parsedOccurredAt = parsed;
+    }
+
     if (Object.keys(data).length === 0) {
       res.status(400).json({ error: "No valid fields provided to update." });
       return;
@@ -290,7 +305,18 @@ router.patch(
 
     if (statusChanged) {
       await prisma.timelineEntry.create({
-        data: { applicationId: application.id, status: data.status as ApplicationStatus },
+        data: {
+          applicationId: application.id,
+          status: data.status as ApplicationStatus,
+          // The client sends its own calendar day, because only it knows what
+          // day it is where the user is: at 8pm in New York the server's UTC
+          // day is already tomorrow, and the column's now() default would file
+          // this stage a day after it happened. Falling back to the server's
+          // UTC day keeps clients that don't send it (curl, older builds) at
+          // worst as wrong as the default was, and never mid-day. See
+          // startOfUtcDay and the client's todayInputValue.
+          occurredAt: parsedOccurredAt ?? startOfUtcDay(),
+        },
       });
     }
 
@@ -355,7 +381,7 @@ router.post(
         applicationId: application.id,
         status,
         note: note ?? null,
-        ...(parsedOccurredAt ? { occurredAt: parsedOccurredAt } : {}),
+        occurredAt: parsedOccurredAt ?? startOfUtcDay(),
       },
     });
 
@@ -486,13 +512,24 @@ router.post(
       return;
     }
 
+    let reserved = false;
+    let billed = false;
     try {
+      reserved = await reserveAiCall(req.user!.id, req.user!.tier);
+      if (!reserved) {
+        res.status(429).json(AI_QUOTA_EXCEEDED_RESPONSE);
+        return;
+      }
+
       const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
       const content = await generateResumeTips(
         resumeMarkdown,
         ctx.application.jobPosting,
         req.user!.careerSpecialization
       );
+      // Claude has answered and the call is paid for. Nothing below this line
+      // is free to retry, so a failure in the write must not refund.
+      billed = true;
 
       const analysis = await prisma.resumeAnalysis.upsert({
         where: { applicationId: ctx.application.id },
@@ -510,6 +547,15 @@ router.post(
       });
 
       res.status(201).json({ analysis, upToDate: true, hasResume: true });
+    } catch (err) {
+      // Only refund a reservation that actually succeeded — if reserveAiCall
+      // itself threw (e.g. a transient DB error), `reserved` is still false
+      // and there's nothing to refund. And never refund once `billed` is set:
+      // past that point the tokens are spent whatever goes wrong.
+      if (reserved && !billed) {
+        await releaseAiCallOnFailure(req.user!.id, req.user!.tier, err);
+      }
+      throw err;
     } finally {
       generationsInFlight.release(ctx.application.id);
     }
@@ -632,13 +678,22 @@ router.post(
       return;
     }
 
+    let reserved = false;
+    let billed = false;
     try {
+      reserved = await reserveAiCall(req.user!.id, req.user!.tier);
+      if (!reserved) {
+        res.status(429).json(AI_QUOTA_EXCEEDED_RESPONSE);
+        return;
+      }
+
       const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
       const content = await generateTailoredResume(
         resumeMarkdown,
         ctx.application.jobPosting,
         req.user!.careerSpecialization
       );
+      billed = true;
 
       const tailored = await prisma.tailoredResume.upsert({
         where: { applicationId: ctx.application.id },
@@ -657,6 +712,11 @@ router.post(
       });
 
       res.status(201).json({ tailored, upToDate: true, hasResume: true });
+    } catch (err) {
+      if (reserved && !billed) {
+        await releaseAiCallOnFailure(req.user!.id, req.user!.tier, err);
+      }
+      throw err;
     } finally {
       tailoredGenerationsInFlight.release(ctx.application.id);
     }
@@ -882,13 +942,22 @@ router.post(
       return;
     }
 
+    let reserved = false;
+    let billed = false;
     try {
+      reserved = await reserveAiCall(req.user!.id, req.user!.tier);
+      if (!reserved) {
+        res.status(429).json(AI_QUOTA_EXCEEDED_RESPONSE);
+        return;
+      }
+
       const resumeMarkdown = await getObjectText(ctx.baseResume.markdownS3Key);
       const content = await generateCoverLetter(
         resumeMarkdown,
         ctx.application.jobPosting,
         req.user!.careerSpecialization
       );
+      billed = true;
 
       const letter = await prisma.coverLetter.upsert({
         where: { applicationId: ctx.application.id },
@@ -907,6 +976,11 @@ router.post(
       });
 
       res.status(201).json({ letter, upToDate: true, hasResume: true });
+    } catch (err) {
+      if (reserved && !billed) {
+        await releaseAiCallOnFailure(req.user!.id, req.user!.tier, err);
+      }
+      throw err;
     } finally {
       coverLetterGenerationsInFlight.release(ctx.application.id);
     }

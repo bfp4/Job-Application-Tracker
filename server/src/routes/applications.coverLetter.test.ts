@@ -12,6 +12,8 @@ const { prismaMock, getObjectTextMock, generateCoverLetterMock } = vi.hoisted(()
     application: { findFirst: vi.fn() },
     baseResume: { findFirst: vi.fn() },
     coverLetter: { upsert: vi.fn(), update: vi.fn() },
+    user: { updateMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
   getObjectTextMock: vi.fn(),
   generateCoverLetterMock: vi.fn(),
@@ -21,7 +23,14 @@ vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../lib/s3", () => ({ getObjectText: getObjectTextMock }));
 vi.mock("../middleware/auth", () => ({
   authenticate: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { id: "user-1", careerSpecialization: "SOFTWARE_ENGINEERING" } as never;
+    // BASIC, so the quota reservation actually runs — reserveAiCall
+    // short-circuits to "allowed" for every other tier, and an omitted tier
+    // would silently route these tests down that unlimited path.
+    req.user = {
+      id: "user-1",
+      careerSpecialization: "SOFTWARE_ENGINEERING",
+      tier: "BASIC",
+    } as never;
     next();
   },
 }));
@@ -68,6 +77,8 @@ describe("cover-letter endpoints", () => {
     generateCoverLetterMock.mockResolvedValue(content);
     prismaMock.coverLetter.upsert.mockResolvedValue(currentLetter());
     prismaMock.coverLetter.update.mockResolvedValue(currentLetter({ edited: true }));
+    // Default: the atomic quota-reservation UPDATE succeeds (returns a row).
+    prismaMock.$queryRaw.mockResolvedValue([{ id: "user-1" }]);
   });
 
   it("returns 404 for an application the user does not own", async () => {
@@ -165,6 +176,54 @@ describe("cover-letter endpoints", () => {
       })
     );
     expect(res.body.upToDate).toBe(true);
+  });
+
+  it("POST returns 429 without generating once the daily limit is reached", async () => {
+    prismaMock.application.findFirst.mockResolvedValue(
+      applicationRow(currentLetter({ jobPostingHash: "stale-hash" }))
+    );
+    // The conditional UPDATE matched no row: today's count is already at the
+    // cap, so the reservation is refused.
+    prismaMock.$queryRaw.mockResolvedValue([]);
+
+    const res = await request(app).post("/api/applications/app-1/cover-letter");
+
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe("AI_QUOTA_EXCEEDED");
+    expect(generateCoverLetterMock).not.toHaveBeenCalled();
+    expect(prismaMock.coverLetter.upsert).not.toHaveBeenCalled();
+  });
+
+  it("POST refunds the reservation when the attempt fails before reaching the model", async () => {
+    prismaMock.application.findFirst.mockResolvedValue(
+      applicationRow(currentLetter({ jobPostingHash: "stale-hash" }))
+    );
+    // Nothing was billed, so retrying is free and the call must come back.
+    getObjectTextMock.mockRejectedValueOnce(new Error("s3 read failed"));
+
+    const res = await request(app).post("/api/applications/app-1/cover-letter");
+
+    expect(res.status).toBe(500);
+    expect(generateCoverLetterMock).not.toHaveBeenCalled();
+    expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+      where: { id: "user-1", aiCallsUsedToday: { gt: 0 } },
+      data: { aiCallsUsedToday: { decrement: 1 } },
+    });
+  });
+
+  it("POST does not refund when the save fails after a billed generation", async () => {
+    prismaMock.application.findFirst.mockResolvedValue(
+      applicationRow(currentLetter({ jobPostingHash: "stale-hash" }))
+    );
+    // Claude answered and was paid for; only the write failed. Refunding here
+    // would let a write that fails every time be replayed at no quota cost.
+    prismaMock.coverLetter.upsert.mockRejectedValueOnce(new Error("pool timeout"));
+
+    const res = await request(app).post("/api/applications/app-1/cover-letter");
+
+    expect(res.status).toBe(500);
+    expect(generateCoverLetterMock).toHaveBeenCalled();
+    expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
   });
 
   it("PATCH rejects a non-object content", async () => {

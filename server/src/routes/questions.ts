@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { Prisma } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
+import { AI_QUOTA_EXCEEDED_RESPONSE, releaseAiCallOnFailure, reserveAiCall } from "../middleware/quota";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
@@ -159,7 +160,15 @@ router.post(
       return;
     }
 
+    let reserved = false;
+    let billed = false;
     try {
+      reserved = await reserveAiCall(req.user!.id, req.user!.tier);
+      if (!reserved) {
+        res.status(429).json(AI_QUOTA_EXCEEDED_RESPONSE);
+        return;
+      }
+
       const resumeMarkdown = await getObjectText(baseResume.markdownS3Key);
       const answer = await generateQuestionAnswer(
         question.question,
@@ -169,6 +178,9 @@ router.post(
         existingDraft,
         req.user!.careerSpecialization
       );
+      // Claude has answered and the call is paid for — see the refund rules on
+      // releaseAiCallOnFailure. The write below must not trigger a refund.
+      billed = true;
 
       const updated = await prisma.applicationQuestion.update({
         where: { id: question.id },
@@ -176,6 +188,11 @@ router.post(
       });
 
       res.status(201).json({ question: updated });
+    } catch (err) {
+      if (reserved && !billed) {
+        await releaseAiCallOnFailure(req.user!.id, req.user!.tier, err);
+      }
+      throw err;
     } finally {
       draftsInFlight.release(question.id);
     }
