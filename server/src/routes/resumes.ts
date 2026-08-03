@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 import { uploadBuffer } from "../lib/s3";
 import { asyncHandler } from "../lib/http";
 import { getLatestBaseResume } from "../lib/baseResume";
-import { convertPdfToMarkdown } from "../lib/pdfToMarkdown";
+import { convertPdfToMarkdown, PdfParseTimeoutError } from "../lib/pdfToMarkdown";
 
 const router = Router();
 
@@ -86,10 +86,14 @@ router.post(
     let markdown: string;
     try {
       markdown = await convertPdfToMarkdown(file.buffer);
-    } catch {
-      res.status(400).json({
-        error: "That PDF couldn't be read. Try re-exporting it and uploading again.",
-      });
+    } catch (err) {
+      // The timeout fires for PDFs that are too complex or deliberately
+      // malformed; only this upload is affected, the server keeps serving.
+      const error =
+        err instanceof PdfParseTimeoutError
+          ? "That PDF took too long to read. Try re-exporting it as a simpler, flattened PDF."
+          : "That PDF couldn't be read. Try re-exporting it and uploading again.";
+      res.status(400).json({ error });
       return;
     }
 
