@@ -214,7 +214,7 @@ export async function generateConnectMessage(
       "You ghost-write LinkedIn connection-request notes for a job candidate reaching out to a contact at a company they are applying to. The goal is to open a relationship that improves the visibility of the candidate's application — not to pitch or ask for a job in the note itself.",
       `This candidate is targeting ${label} roles. Write the note the way it lands in that field:\n${guidance}`,
       "Hard rules:",
-      "- HARD LIMIT: at most 300 characters including spaces. Aim for 180–260 characters — concise beats comprehensive.",
+      "- HARD LIMIT: at most 300 characters including spaces. Aim for 160–220 characters — concise beats comprehensive.",
       "- Write in the first person as the candidate, warm and professional, never stiff or salesy.",
       "- Address the contact by their first name.",
       "- Name the specific role and company, and tie the reason for connecting to it, guided strictly by the application status.",
