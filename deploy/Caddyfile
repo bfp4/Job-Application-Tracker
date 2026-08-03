@@ -1,3 +1,12 @@
 {$DUCKDNS_HOST} {
+	# HSTS belongs at the TLS edge — Caddy is the only thing here that knows the
+	# connection is HTTPS. The rest of the defensive headers are set by the API
+	# itself (server/src/middleware/securityHeaders.ts); setting them again here
+	# would just send every one of them twice.
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+
 	reverse_proxy api:5000
 }

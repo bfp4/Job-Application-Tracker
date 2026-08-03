@@ -4,6 +4,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { errorHandler } from "./lib/http";
 import { verifyAppCheck } from "./middleware/appCheck";
+import { securityHeaders } from "./middleware/securityHeaders";
 import resumesRouter from "./routes/resumes";
 import applicationsRouter from "./routes/applications";
 import followUpsRouter from "./routes/followUps";
@@ -18,6 +19,11 @@ const app = express();
 
 const PORT = Number(process.env.PORT) || 5000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+
+// Don't advertise the framework, and set defensive headers on everything —
+// health, routes, 404s and error responses alike.
+app.disable("x-powered-by");
+app.use(securityHeaders);
 
 app.use(
   cors({
