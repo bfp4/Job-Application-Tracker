@@ -25,8 +25,11 @@ set your host:
 
 ```bash
 export DUCKDNS_HOST=<yours>.duckdns.org
-export MY_IP=$(curl -s https://checkip.amazonaws.com)   # restricts SSH to you
 ```
+
+`MY_IP` is no longer used. The API instance has **no inbound SSH** — shell access
+is SSM Session Manager (EC2 → Instances → Connect → Session Manager), and
+`01-security-groups.sh` revokes any port-22 rule it finds.
 
 ## Run order
 

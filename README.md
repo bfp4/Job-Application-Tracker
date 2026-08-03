@@ -101,14 +101,47 @@ Deploys are automatic: a push to `main` (after tests pass) builds the arm64 imag
 
 Provisioning is scripted end-to-end in [`infra/`](infra/README.md) (idempotent AWS CLI scripts, numbered in run order).
 
-### Local dev against the private RDS
+### Local database (the default)
 
-Your laptop can no longer reach RDS directly. For `prisma migrate dev` / `prisma studio`, open an SSH tunnel through the API instance first:
+Day-to-day development runs against a **local** PostgreSQL, never production.
+Match production's major version — PostgreSQL **18** — so migrations behave the
+same in both places. One-time setup:
 
 ```bash
-ssh -i infra/jobtracker-key.pem -N -L 15433:<rds-endpoint>:5432 ec2-user@<your-host>.duckdns.org
+psql -U postgres -p 5433 \
+  -c "CREATE ROLE jobtracker LOGIN PASSWORD 'jobtracker_local_dev'" \
+  -c "CREATE DATABASE jobtracker_dev OWNER jobtracker"
+
+cd server && npx prisma migrate deploy
 ```
 
-then point `DATABASE_URL` at `localhost:15433` in `server/.env`. (15433 rather
-than 5433: Windows reserves swaths of low ports for Hyper-V, and 5433 falls in
-an excluded range on some machines.)
+Two separate `-c` flags because `CREATE DATABASE` cannot run inside a
+transaction block. `server/.env.example` already points `DATABASE_URL` here.
+
+### Reaching production RDS (deliberately)
+
+RDS is private — no public route, and the API instance has **no inbound SSH**
+(port 22 is closed; `01-security-groups.sh` actively revokes any rule for it).
+When you genuinely need prod, open a port-forwarding tunnel:
+
+```bash
+./infra/tunnel.sh          # localhost:15433 -> prod RDS:5432
+```
+
+Leave it running in its own terminal and point `DATABASE_URL` at
+`localhost:15433` with the RDS master credentials. The script discovers the
+instance and endpoint itself; `LOCAL_PORT=15444 ./infra/tunnel.sh` if 15433 is
+taken.
+
+> **This is live user data.** Prefer the local database for anything that
+> writes — especially `prisma migrate dev`, which has wiped this database before.
+
+Requires, one time:
+
+- the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
+  installed locally (the `aws` CLI alone is not enough), and
+- `ssm:StartSession` on the instance plus the
+  `AWS-StartPortForwardingSessionToRemoteHost` document.
+
+For a plain shell rather than a tunnel, EC2 → Instances → Connect → Session
+Manager works in the browser with no local install.
