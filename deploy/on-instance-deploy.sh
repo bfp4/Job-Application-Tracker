@@ -21,5 +21,16 @@ docker compose --env-file deploy.env run --rm api npx prisma migrate deploy
 
 docker compose --env-file deploy.env up -d
 
+# Caddy bind-mounts /opt/app/Caddyfile, and `up -d` only recreates a container
+# when the *service definition* changes — a content-only edit to the Caddyfile
+# goes unnoticed, so it would sit on disk unapplied until some unrelated
+# restart picked it up. Reload it explicitly. Validating first means a broken
+# Caddyfile fails the deploy loudly with Caddy still serving its old config,
+# rather than taking TLS down.
+docker compose --env-file deploy.env exec -T caddy \
+  caddy validate --config /etc/caddy/Caddyfile
+docker compose --env-file deploy.env exec -T caddy \
+  caddy reload --config /etc/caddy/Caddyfile
+
 docker image prune -f
 echo "Deploy complete: $ECR_IMAGE"

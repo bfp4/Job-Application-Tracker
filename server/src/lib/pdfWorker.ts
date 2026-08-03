@@ -13,8 +13,11 @@ export type PdfWorkerResult =
   | { ok: true; markdown: string }
   | { ok: false; error: string };
 
-// Structured clone hands workerData over as a Uint8Array; pdf2md wants a Buffer.
-const buffer = Buffer.from(workerData as Uint8Array);
+// Structured clone hands workerData over as a Uint8Array; pdf2md wants a
+// Buffer. Wrap the bytes rather than Buffer.from(view), which would copy a
+// second time — these are up to 10MB on a 1GB box.
+const bytes = workerData as Uint8Array;
+const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
 void (async () => {
   try {

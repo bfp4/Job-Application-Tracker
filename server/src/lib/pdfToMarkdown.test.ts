@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import PDFDocument from "pdfkit";
 import {
+  activeParseCount,
   convertPdfToMarkdown,
+  MAX_CONCURRENT_PDF_PARSES,
   PdfParseTimeoutError,
   PDF_PARSE_TIMEOUT_MS,
 } from "./pdfToMarkdown";
@@ -63,5 +65,57 @@ describe("convertPdfToMarkdown", () => {
 
   it("defaults to a 20 second budget", () => {
     expect(PDF_PARSE_TIMEOUT_MS).toBe(20_000);
+  });
+});
+
+describe("convertPdfToMarkdown concurrency cap", () => {
+  it("queues uploads past the cap instead of spawning a thread each", async () => {
+    const pdf = await makePdf(["Concurrent upload"]);
+
+    let peak = 0;
+    const sampler = setInterval(() => {
+      peak = Math.max(peak, activeParseCount());
+    }, 1);
+
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => convertPdfToMarkdown(pdf))
+    );
+    clearInterval(sampler);
+
+    // All six still get their answer — the queue drains, it doesn't deadlock.
+    expect(results).toHaveLength(6);
+    for (const markdown of results) expect(markdown).toContain("Concurrent upload");
+
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThanOrEqual(MAX_CONCURRENT_PDF_PARSES);
+  });
+
+  it("gives the slot back when a parse fails, so the cap can't leak shut", async () => {
+    const unreadable = Buffer.from("%PDF-1.4 then garbage");
+
+    await Promise.all(
+      Array.from({ length: 4 }, () =>
+        convertPdfToMarkdown(unreadable, 5_000).catch(() => undefined)
+      )
+    );
+    expect(activeParseCount()).toBe(0);
+
+    // A good upload behind those failures still goes through.
+    const markdown = await convertPdfToMarkdown(await makePdf(["Still working"]));
+    expect(markdown).toContain("Still working");
+  });
+
+  it("times out waiting for a slot rather than queueing without bound", async () => {
+    const pdf = await makePdf(["Holding a slot"]);
+
+    // Fill every slot, then a further upload with no budget can't get one.
+    const holders = Array.from({ length: MAX_CONCURRENT_PDF_PARSES }, () =>
+      convertPdfToMarkdown(pdf)
+    );
+    const queued = convertPdfToMarkdown(pdf, 1);
+
+    await expect(queued).rejects.toBeInstanceOf(PdfParseTimeoutError);
+    await Promise.all(holders);
+    expect(activeParseCount()).toBe(0);
   });
 });
