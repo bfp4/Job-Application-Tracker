@@ -40,7 +40,7 @@ jobs:
       - run: npm test
 
   client:
-    name: Client (lint + typecheck + tests)
+    name: Client (lint + typecheck + tests + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -56,6 +56,12 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
+      # Lint, typecheck, and tests never evaluate the PostCSS/Tailwind pipeline,
+      # so a broken CSS config passes all three. Only a build catches it: the
+      # Tailwind v4 bump (#7) was green here while `next build` failed outright.
+      # No secrets needed — NEXT_PUBLIC_* are read at runtime, and App Check
+      # only initializes in the browser.
+      - run: npm run build
 
   lambda:
     name: Lambda (typecheck + tests)
