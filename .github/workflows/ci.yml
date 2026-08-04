@@ -59,9 +59,20 @@ jobs:
       # Lint, typecheck, and tests never evaluate the PostCSS/Tailwind pipeline,
       # so a broken CSS config passes all three. Only a build catches it: the
       # Tailwind v4 bump (#7) was green here while `next build` failed outright.
-      # No secrets needed — NEXT_PUBLIC_* are read at runtime, and App Check
-      # only initializes in the browser.
+      #
+      # Placeholders, not secrets. Prerendering evaluates the Firebase SDK at
+      # module scope, and getAuth() throws auth/invalid-api-key on an undefined
+      # key — so the build needs *some* value. Nothing contacts Firebase at
+      # build time, and NEXT_PUBLIC_* are inlined into the browser bundle
+      # anyway, so real credentials would buy nothing here. This output is
+      # never deployed; Vercel builds the client with the real values.
       - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5000
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder-key
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:0:web:0"
 
   lambda:
     name: Lambda (typecheck + tests)
