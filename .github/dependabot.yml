@@ -1,0 +1,44 @@
+# Weekly dependency update PRs. Dependabot resolves and regenerates each
+# lockfile in its own environment, which is what makes it safe here: locally
+# regenerated lockfiles have broken `npm ci` on CI before (npm 11 vs the
+# runner's npm), and the CI `npm ci` on the resulting PR is what proves the
+# lockfile is good before it reaches main.
+#
+# Pairs with the `audit` job in workflows/ci.yml — that one reports what's
+# already vulnerable, this one supplies the fix.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /server
+      - /client
+      - /lambda
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    # One PR per directory for the routine bumps, so the weekly review is three
+    # PRs rather than thirty. Majors stay separate — they need reading.
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
+
+  # The pinned action versions in ci.yml go stale the same way, and a stale
+  # actions/checkout is how deploy credentials get handled by old code.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

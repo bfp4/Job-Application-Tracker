@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # An advisory can land against dependencies that haven't changed, so the
+  # audit job below needs a heartbeat that isn't a code push. The deploy jobs
+  # are gated on `push` and skip on this trigger.
+  schedule:
+    - cron: "0 11 * * 1" # Mondays, after Dependabot has opened its PRs
 
 permissions:
   id-token: write # OIDC token for assuming the AWS deploy role
@@ -69,8 +74,29 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
 
+  audit:
+    name: Dependency audit (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one package's advisory shouldn't hide another's
+      matrix:
+        package: [server, client, lambda]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      # Reads the lockfile directly — no install needed.
+      - run: npm audit --audit-level=high
+        working-directory: ${{ matrix.package }}
+
   deploy-api:
     name: Deploy API to EC2
+    # Deliberately not gated on `audit`: an advisory published against an
+    # untouched dependency must not block shipping an unrelated fix. It goes
+    # red, you see it, you merge the Dependabot PR.
     needs: [server, client, lambda]
     # Deploys only from main, and only once the infra exists (repo variables set).
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.INSTANCE_ID != '' && vars.DEPLOY_ROLE_ARN != ''
