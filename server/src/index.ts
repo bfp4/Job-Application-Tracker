@@ -3,7 +3,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { errorHandler } from "./lib/http";
-import { verifyAppCheck } from "./middleware/appCheck";
+import { assertAppCheckConfigured, verifyAppCheck } from "./middleware/appCheck";
 import { securityHeaders } from "./middleware/securityHeaders";
 import resumesRouter from "./routes/resumes";
 import applicationsRouter from "./routes/applications";
@@ -19,6 +19,11 @@ const app = express();
 
 const PORT = Number(process.env.PORT) || 5000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+
+// Before anything is wired up: refuse to serve an unattested API in production,
+// and say so out loud everywhere else. Throwing here exits non-zero, so a bad
+// deploy fails its health check instead of quietly serving without App Check.
+assertAppCheckConfigured();
 
 // Don't advertise the framework, and set defensive headers on everything —
 // health, routes, 404s and error responses alike.
