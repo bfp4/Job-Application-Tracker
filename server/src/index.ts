@@ -52,8 +52,20 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
 
-// App Check attestation + rate limiting guard the API surface (health stays open).
-app.use("/api", verifyAppCheck, apiLimiter);
+// Rate limiting + App Check attestation guard the API surface (health stays
+// open, so the container healthcheck and the deploy smoke test are never
+// throttled).
+//
+// ORDER MATTERS, and not only for cost. verifyAppCheck used to run first,
+// which meant an unattested request was rejected before it ever reached the
+// limiter — and express-rate-limit only counts requests that reach it. So the
+// one kind of traffic most worth shedding, a flood of junk tokens, consumed
+// none of the attacker's budget and was effectively unlimited, while each
+// request still bought a signature verification on a 2-vCPU box.
+//
+// Cheapest check first: the counter sheds junk, and only requests already
+// inside the rate budget cost a verification.
+app.use("/api", apiLimiter, verifyAppCheck);
 
 app.use("/api/resumes", resumesRouter);
 app.use("/api/applications", applicationsRouter);
