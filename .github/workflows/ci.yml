@@ -10,8 +10,12 @@ on:
   schedule:
     - cron: "0 11 * * 1" # Mondays, after Dependabot has opened its PRs
 
+# Read-only by default. `id-token: write` is what lets a job mint the OIDC
+# token that assumes the AWS deploy role, and the token's `sub` claim names
+# only the repo and ref — not the job. Granted workflow-wide, a compromised
+# action in the test or audit jobs would produce a token AWS cannot tell apart
+# from a real deploy's. The two deploy jobs opt in individually instead.
 permissions:
-  id-token: write # OIDC token for assuming the AWS deploy role
   contents: read
 
 # KEEP IN SYNC with infra/env.sh ($APP-derived names and region).
@@ -28,8 +32,8 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -46,8 +50,8 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -81,8 +85,8 @@ jobs:
       run:
         working-directory: lambda
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -99,8 +103,8 @@ jobs:
       matrix:
         package: [server, client, lambda]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -119,13 +123,16 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.INSTANCE_ID != '' && vars.DEPLOY_ROLE_ARN != ''
     # arm runner: the image must be arm64 to run on the t4g instance.
     runs-on: ubuntu-24.04-arm
+    permissions:
+      id-token: write # only here and in deploy-lambda — see the note up top
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
         with:
           role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
       - name: Build and push image
         run: |
           IMAGE="${{ vars.ECR_REGISTRY }}/${{ env.ECR_REPO }}"
@@ -188,9 +195,12 @@ jobs:
     needs: [server, client, lambda]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # only here and in deploy-api — see the note up top
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -201,7 +211,7 @@ jobs:
           npm ci
           node build.mjs
           zip -j function.zip dist/index.js
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
         with:
           role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

@@ -102,6 +102,19 @@ else
   INSTANCE_SUFFIX="${INSTANCE_ID_FOR_POLICY}"
 fi
 
+# Scoped to pushes on main. Note what `sub` does NOT carry: the job. Any job in
+# any workflow run on main satisfies this condition, so the boundary that keeps
+# the test and audit jobs away from this role is not here — it's the per-job
+# `id-token: write` in ci.yml, without which a job cannot mint an OIDC token at
+# all. Keep that scoping narrow; this policy will not catch a mistake in it.
+#
+# The tighter form is `repo:${GITHUB_REPO}:environment:production`, which pins
+# the role to jobs declaring `environment: production` and lets that
+# environment's protection rules gate them. Not used: it makes every deploy
+# wait on a manual approval, which isn't wanted here. If that changes, it's a
+# two-sided edit — apply this script BEFORE pushing the ci.yml that declares
+# the environment, or the next deploy fails (closed, harmlessly) at the
+# credentials step.
 cat >"$tmp/gh-trust.json" <<EOF
 {
   "Version": "2012-10-17",
