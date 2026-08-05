@@ -15,18 +15,34 @@ import { linkedinMessageGuidance } from "../lib/linkedinMessageSpecializations";
 const MAX_NOTES_CHARS = 4_000;
 const MAX_CONTACT_NOTES_CHARS = 2_000;
 
+/**
+ * How many drafts the model returns per call.
+ *
+ * Language models cannot count characters — asking for one note "under 300
+ * characters" reliably produces notes over it, and the old fix (hard-cutting
+ * the overflow) shipped notes that stopped mid-sentence. Three independent
+ * drafts in one call cost a few dozen extra output tokens and let `pickNote`
+ * choose one that actually fits, so the truncation path is a genuine last
+ * resort rather than the common case.
+ */
+const DRAFT_COUNT = 3;
+
 const MESSAGE_SCHEMA = {
   type: "object",
   properties: {
-    // No `maxLength` here: string length constraints aren't part of the JSON
-    // Schema subset structured outputs supports. The limit is enforced by the
-    // prompt and, definitively, by the trim below.
-    message: {
-      type: "string",
-      description: `The LinkedIn connection-request note, ready to paste. Plain text, first person, no greeting line breaks needed, and at most ${MAX_CONNECT_MESSAGE_CHARS} characters including spaces.`,
+    // No `maxLength` / `minItems` here: length constraints aren't part of the
+    // JSON Schema subset structured outputs supports. Count and length are
+    // enforced by the prompt and, definitively, by pickNote below.
+    notes: {
+      type: "array",
+      items: {
+        type: "string",
+        description: `One complete LinkedIn connection-request note, ready to paste. Plain text, first person, single paragraph, at most ${MAX_CONNECT_MESSAGE_CHARS} characters including spaces.`,
+      },
+      description: `Exactly ${DRAFT_COUNT} independent drafts of the note, each a complete note on its own. Vary the opening and the wording between them; do not return one note split into parts.`,
     },
   },
-  required: ["message"],
+  required: ["notes"],
   additionalProperties: false,
 };
 
@@ -137,25 +153,86 @@ export function serializeContact<T extends ContactWithMessage>(
  * How the candidate's application stands is the single biggest lever on what
  * the note should say — you can't tell a recruiter you applied if you haven't,
  * and an active interview is a stronger, more specific hook than a fresh
- * application. Each status maps to one line of guidance the model must follow.
+ * application. Each status maps to one line of guidance the model must follow,
+ * and to the one direct ask that status earns.
+ *
+ * The ask is stated outright on purpose. Hedged closes ("would love to connect
+ * and follow the team's work") read as filler and leave the reader with nothing
+ * to do; the note exists to get the application looked at, so it says so.
  */
 function statusGuidance(status: ApplicationStatus): string {
   switch (status) {
     case "NOT_APPLIED":
-      return "The candidate has NOT applied yet — they are about to. Express genuine interest in the role and that they plan to apply; do NOT claim they already applied.";
+      return "The candidate has NOT applied yet — they are about to. Do NOT claim they already applied. Say they are applying for the role, and ask directly whether this person is the right one to send it to, or would be willing to keep an eye out for it.";
     case "APPLIED":
-      return "The candidate has applied and is waiting to hear back. Mention that they recently applied for the role.";
+      return "The candidate applied and is waiting to hear back. Say they applied, and ask directly for what they actually want: that this person take a look at the application, or pass it to whoever is reviewing.";
     case "PHONE_SCREEN":
-      return "The candidate has applied and completed (or scheduled) a phone screen. Mention they applied and are early in the process; keep it warm and low-pressure.";
+      return "The candidate applied and has done (or booked) a phone screen. Say where they are in the process, and ask directly for the one thing that helps next: what the team is weighing, or a word put in before the next round.";
     case "INTERVIEW":
-      return "The candidate is actively interviewing for the role. Reference that they are in the interview process — this is a strong, specific hook worth naming.";
+      return "The candidate is actively interviewing for the role — the strongest hook they have, so name it. Ask directly for what this person can actually give: what the team is really looking for, or their support internally.";
     case "OFFER":
-      return "The candidate is in the final stages / has an offer for the role. Reference being far along in the process and wanting to connect with the team.";
+      return "The candidate is at the final stage or holds an offer. Say so plainly and ask directly to connect with this person properly before they join.";
     case "REJECTED":
-      return "The candidate applied but was not moved forward. Do NOT dwell on the rejection; frame it as having been interested in the role and wanting to stay connected for the future.";
+      return "The candidate applied and was not moved forward. State it in a few words without apologising or dwelling, and ask directly to be kept in mind for the next opening on the team.";
     default:
-      return "Reference the candidate's interest in the role.";
+      return "Say why the candidate is writing and ask directly for the one thing they want.";
   }
+}
+
+/**
+ * Picks the note to keep from the model's drafts: the longest one that fits.
+ *
+ * Longest-that-fits rather than shortest, because every draft is already built
+ * to the same word budget — the extra characters are a concrete detail the
+ * shorter drafts dropped, not padding.
+ */
+function pickNote(notes: string[]): string {
+  const cleaned = notes
+    .filter((note): note is string => typeof note === "string")
+    .map((note) => note.trim())
+    .filter((note) => note !== "");
+
+  if (cleaned.length === 0) {
+    throw new Error("Claude returned no usable LinkedIn note drafts.");
+  }
+
+  const fitting = cleaned.filter((note) => note.length <= MAX_CONNECT_MESSAGE_CHARS);
+  if (fitting.length > 0) {
+    return fitting.reduce((best, note) => (note.length > best.length ? note : best));
+  }
+
+  // Every draft overflowed. Trim the shortest — it loses the least.
+  const shortest = cleaned.reduce((best, note) => (note.length < best.length ? note : best));
+  return trimToLimit(shortest);
+}
+
+/**
+ * Last-resort trim for a draft that overflowed the cap.
+ *
+ * Cuts at a sentence boundary where one is available, so the note still reads
+ * as finished rather than stopping mid-thought, and falls back to a word
+ * boundary only when the first sentence alone already fills the note. The
+ * floor keeps either fallback from returning a stub.
+ */
+function trimToLimit(note: string): string {
+  if (note.length <= MAX_CONNECT_MESSAGE_CHARS) return note;
+
+  const hardCut = note.slice(0, MAX_CONNECT_MESSAGE_CHARS);
+  const MIN_USEFUL = 150;
+
+  // A terminator at the very end has no trailing space to search for, so test
+  // for it separately before looking for mid-string sentence breaks.
+  if (/[.!?]$/.test(hardCut)) return hardCut.trim();
+
+  const lastStop = Math.max(
+    hardCut.lastIndexOf(". "),
+    hardCut.lastIndexOf("? "),
+    hardCut.lastIndexOf("! ")
+  );
+  if (lastStop >= MIN_USEFUL) return hardCut.slice(0, lastStop + 1).trim();
+
+  const lastSpace = hardCut.lastIndexOf(" ");
+  return (lastSpace > MIN_USEFUL ? hardCut.slice(0, lastSpace) : hardCut).trim();
 }
 
 /**
@@ -164,9 +241,12 @@ function statusGuidance(status: ApplicationStatus): string {
  * posting, the candidate's resume, the application's status, and any notes.
  *
  * The note is deliberately short: research on connection requests shows notes
- * of ~120–180 chars outperform ones that fill the whole 300, and that a
- * request should open a relationship (a specific, genuine reason to connect),
- * not pitch or ask for a job outright.
+ * of ~120–180 chars outperform ones that fill the whole 300. It is also
+ * deliberately direct — it names the role, states where the application stands,
+ * and asks outright for the thing that helps (usually: look at the
+ * application). Softer closes tested better on raw acceptance rate, but they
+ * leave the reader nothing to act on, and getting the application read is the
+ * point of sending the note at all.
  *
  * Within those 300 characters the register and the one credibility detail vary
  * by field — a finance note reads nothing like a design note — so the
@@ -209,20 +289,29 @@ export async function generateConnectMessage(
 
   const { label, guidance } = linkedinMessageGuidance(specialization);
 
-  const { message } = await generateStructured<{ message: string }>({
+  const { notes } = await generateStructured<{ notes: string[] }>({
     system: [
-      "You ghost-write LinkedIn connection-request notes for a job candidate reaching out to a contact at a company they are applying to. The goal is to open a relationship that improves the visibility of the candidate's application — not to pitch or ask for a job in the note itself.",
+      "You ghost-write LinkedIn connection-request notes for a job candidate reaching out to someone at a company they are applying to. The note has one job: get this person to accept the request and actually look at the candidate's application. Write the note that does that, and say what the candidate wants in plain words.",
       `This candidate is targeting ${label} roles. Write the note the way it lands in that field:\n${guidance}`,
+      `Return exactly ${DRAFT_COUNT} separate drafts, each a complete note on its own. Vary the opening line and the wording between them — do not return the same note three times, and never split one note across the drafts.`,
+      "Length (this is the constraint drafts fail most often):",
+      "- Write each note as 30–45 words. Never exceed 50 words or 300 characters including spaces — LinkedIn rejects the note above 300, and shorter notes get accepted more often.",
+      "- One paragraph. No line breaks, no bullet points, no sign-off line — LinkedIn already shows the candidate's name.",
+      "Voice — this is what most drafts get wrong:",
+      "- Write the way a real person types to another person: short sentences, contractions, one idea per sentence. Read it back and cut any word that isn't doing work.",
+      "- Be direct. Say why they're writing in the first sentence and make the ask outright in the last one. Never hint at the ask or bury it in pleasantries.",
+      "- NEVER use any of these, in any variation: 'I hope this message finds you well', 'I hope you're doing well', 'I came across', 'I wanted to reach out', 'reaching out regarding', 'I'd love to connect', 'I'm passionate about', 'excited about the opportunity', 'I believe my background aligns', 'your insight would be invaluable', 'thank you for your time and consideration'.",
+      "- No em dashes, no semicolons, no exclamation marks, no emoji, and none of 'dynamic', 'innovative', 'cutting-edge', 'leading', 'thrilled', 'delighted'.",
+      "- Do not describe back to them what their own company or team does. They work there.",
+      "- Do not flatter the contact or open by praising their career.",
       "Hard rules:",
-      "- HARD LIMIT: at most 300 characters including spaces. Aim for 160–220 characters — concise beats comprehensive.",
-      "- Write in the first person as the candidate, warm and professional, never stiff or salesy.",
-      "- Address the contact by their first name.",
-      "- Name the specific role and company, and tie the reason for connecting to it, guided strictly by the application status.",
-      "- Ground any claim about the candidate's background only in their resume; never invent employers, titles, metrics, or shared history. If a personalizing detail would help but isn't in the materials, leave it out rather than fabricating it.",
-      "- Do NOT ask for a referral, a call, or a job in the note. A soft, low-pressure close (e.g. wanting to connect / follow the team's work) is the ceiling.",
+      "- Write in the first person as the candidate. Open with the contact's first name only, no 'Dear' and no title.",
+      "- Name the specific role and company once, and make the ask the one the application status calls for — follow that status guidance strictly.",
+      "- Include exactly one concrete credibility detail from the resume, stated flatly with no adjectives. If the resume is missing or thin, leave it out entirely rather than padding with generic claims.",
+      "- Ground every claim about the candidate's background only in their resume; never invent employers, titles, metrics, or shared history. If a personalizing detail would help but isn't in the materials, leave it out rather than fabricating it.",
       "- Return plain text with no surrounding quotes, no subject line, and no '[bracketed placeholders]'.",
     ].join("\n"),
-    prompt: `Write the LinkedIn connection-request note.\n\n${sections.join("\n\n")}`,
+    prompt: `Write the ${DRAFT_COUNT} LinkedIn connection-request note drafts.\n\n${sections.join("\n\n")}`,
     schema: MESSAGE_SCHEMA,
     // The cheapest call in the app: a 300-character note from rules this
     // explicit doesn't need Sonnet, and doesn't need to reason first either.
@@ -231,11 +320,7 @@ export async function generateConnectMessage(
     maxTokens: 2000,
   });
 
-  const trimmed = message.trim();
-  // Safety net: the schema and prompt both cap length, but never let a stray
-  // over-limit draft reach the DB / LinkedIn. Trim at a word boundary.
-  if (trimmed.length <= MAX_CONNECT_MESSAGE_CHARS) return trimmed;
-  const hardCut = trimmed.slice(0, MAX_CONNECT_MESSAGE_CHARS);
-  const lastSpace = hardCut.lastIndexOf(" ");
-  return (lastSpace > 200 ? hardCut.slice(0, lastSpace) : hardCut).trim();
+  // Definitive enforcement of the cap: the prompt asks for a word budget the
+  // model can hold to, but only this guarantees what reaches the DB fits.
+  return pickNote(Array.isArray(notes) ? notes : []);
 }

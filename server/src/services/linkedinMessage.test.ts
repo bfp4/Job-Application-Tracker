@@ -32,10 +32,16 @@ async function callWith(specialization?: Parameters<typeof generateConnectMessag
   return generateStructuredMock.mock.calls[0][0];
 }
 
+/** Runs the service with a fixed set of drafts and returns the chosen note. */
+function draft(notes: string[]) {
+  generateStructuredMock.mockResolvedValue({ notes });
+  return generateConnectMessage(contact, posting, "APPLIED", null, resumeMarkdown);
+}
+
 describe("generateConnectMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    generateStructuredMock.mockResolvedValue({ message: "Hi Grace — great to connect." });
+    generateStructuredMock.mockResolvedValue({ notes: ["Hi Grace, I applied Tuesday."] });
   });
 
   // Cost: a 300-character note from rules this explicit is the one call here
@@ -47,11 +53,29 @@ describe("generateConnectMessage", () => {
     expect(reasoning).toBe("off");
   });
 
-  it("keeps the 300-character ceiling and the no-pitch rule", async () => {
+  it("keeps the 300-character ceiling and asks for several drafts", async () => {
+    const { system, schema } = await callWith();
+
+    expect(system).toContain("300 characters");
+    expect(system).toContain("30–45 words");
+    expect((schema as { properties: { notes: unknown } }).properties.notes).toBeDefined();
+  });
+
+  // The complaint these rules answer: notes that opened with filler and closed
+  // without asking for anything.
+  it("bans the stock LinkedIn filler and requires a direct ask", async () => {
     const { system } = await callWith();
 
-    expect(system).toContain("at most 300 characters");
-    expect(system).toContain("Do NOT ask for a referral");
+    expect(system).toContain("I hope this message finds you well");
+    expect(system).toContain("I'd love to connect");
+    expect(system).toContain("make the ask outright in the last one");
+  });
+
+  it("tells the model what to ask for based on the application status", async () => {
+    await generateConnectMessage(contact, posting, "APPLIED", null, resumeMarkdown);
+    const applied = generateStructuredMock.mock.calls[0][0].prompt;
+
+    expect(applied).toContain("take a look at the application");
   });
 
   it("frames the note for the candidate's specialization", async () => {
@@ -74,18 +98,43 @@ describe("generateConnectMessage", () => {
     expect(system).toContain("targeting General roles");
   });
 
-  it("trims an over-long draft at a word boundary", async () => {
-    generateStructuredMock.mockResolvedValue({ message: "word ".repeat(100) });
+  // The point of asking for several drafts: overflow is the model's most common
+  // failure, and a draft that fits beats one that has been cut down.
+  it("keeps the longest draft that fits instead of trimming a longer one", async () => {
+    const short = "Hi Grace, I applied Monday.";
+    const full = `Hi Grace, ${"x".repeat(280)}`;
+    const over = `Hi Grace, ${"y".repeat(400)}`;
 
-    const message = await generateConnectMessage(
-      contact,
-      posting,
-      "APPLIED",
-      null,
-      resumeMarkdown
-    );
+    const message = await draft([over, short, full]);
+
+    expect(message).toBe(full);
+  });
+
+  it("trims at a sentence boundary when every draft overflows", async () => {
+    // A first sentence long enough to stand on its own, then overflow after it.
+    const sentence = `Hi Grace, ${"a".repeat(180)}.`;
+    const overflowing = `${sentence} ${"word ".repeat(40)}`;
+
+    const message = await draft([overflowing, `${"z".repeat(400)}.`]);
+
+    expect(message.length).toBeLessThanOrEqual(300);
+    expect(message).toBe(sentence);
+  });
+
+  it("falls back to a word boundary when the first sentence fills the note", async () => {
+    const message = await draft(["word ".repeat(100)]);
 
     expect(message.length).toBeLessThanOrEqual(300);
     expect(message.endsWith("word")).toBe(true);
+  });
+
+  it("ignores blank drafts rather than returning one", async () => {
+    const message = await draft(["", "   ", "Hi Grace, I applied Monday."]);
+
+    expect(message).toBe("Hi Grace, I applied Monday.");
+  });
+
+  it("fails loudly when no draft is usable", async () => {
+    await expect(draft(["", "  "])).rejects.toThrow("no usable LinkedIn note drafts");
   });
 });

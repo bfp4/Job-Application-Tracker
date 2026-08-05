@@ -12,8 +12,11 @@ import {
  * credibility detail and the one reason to connect should be for that field —
  * and how formal the register should be. Grounded in current (2026) outreach
  * practice: personalized notes that name a concrete, genuine reason are
- * accepted at roughly three times the rate of blank ones, and a note that
- * pitches or asks for a job is the main failure mode.
+ * accepted at roughly three times the rate of blank ones.
+ *
+ * This file sets register and subject matter only. The note's directness — a
+ * stated ask rather than a hedged close — is fixed for every field in the
+ * system prompt, so guidance here must not tell the model to soften or drop it.
  */
 export const LINKEDIN_MESSAGE_GUIDANCE: Record<CareerSpecialization, string> = {
   GENERAL:
@@ -27,7 +30,7 @@ export const LINKEDIN_MESSAGE_GUIDANCE: Record<CareerSpecialization, string> = {
   MARKETING:
     "Personalize on something the team's marketing actually does — the brand, the campaign, the channel, or the audience the posting describes. The credibility line should be one growth or campaign outcome from the resume. Warm and personable, but skip the growth-hacking jargon.",
   SALES:
-    "Confident, direct, and human — a peer reaching out, not a pitch. Reference the segment, territory, or customer the team sells into, and use one performance number from the resume as the credibility line. Because this is a sales candidate, be especially careful that the note does not read as prospecting: no value props, no calendar links, no ask.",
+    "Confident, direct, and human — a peer reaching out about a job, not a rep working a lead. Reference the segment, territory, or customer the team sells into, and use one performance number from the resume as the credibility line. Because this is a sales candidate, keep the note clear of anything that reads as prospecting: no value props, no calendar links, no multi-step close. The one ask is about the candidate's application, nothing else.",
   HEALTHCARE:
     "Warm, professional, and patient-centered. Open on the unit, specialty, or care setting the contact works in, and make the credibility line the candidate's licensure and clinical experience exactly as the resume states it (e.g. RN with ICU experience). Never imply a credential the resume doesn't list, and never include anything resembling patient information.",
   DESIGN:
