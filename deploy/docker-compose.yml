@@ -19,6 +19,18 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    # Docker's json-file driver keeps everything forever unless told otherwise,
+    # and this box is a t4g.micro with a 20GB volume — an unbounded log grows
+    # until the disk fills, at which point Postgres connections, Docker and the
+    # API fail together. 30MB ceiling per service. Pairs with the redaction in
+    # server/src/lib/http.ts: that bounds what gets written, this bounds how
+    # long it lives, and user data shouldn't accumulate on disk indefinitely
+    # either way.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   caddy:
     image: caddy:2-alpine
@@ -33,6 +45,13 @@ services:
       - /opt/app/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    # Lower volume than the API (no access log is configured), but it shares
+    # the same disk and the same unbounded default.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   caddy_data:
