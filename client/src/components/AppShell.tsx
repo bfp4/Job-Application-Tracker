@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import LegalFooter from "@/components/LegalFooter";
 import {
   IconBriefcase,
   IconDashboard,
@@ -75,6 +76,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {/* pb clears the mobile tab bar; lg drops it since the bar is gone. */}
         <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-12">
           {children}
+          <LegalFooter className="mt-12 border-t border-border pt-6" />
         </div>
       </main>
 

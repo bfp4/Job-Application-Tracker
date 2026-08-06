@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { CopyField } from "@/components/CopyButton";
 import { AiError } from "@/components/ai";
@@ -516,6 +517,23 @@ function AddContactForm({
   return (
     <div className="border-t border-border pt-5">
       <h3 className="text-sm font-bold text-ink">Add a contact</h3>
+      {/*
+        The only place in the app where a user stores someone *else's* personal
+        data — a recruiter or hiring manager who never signed up here and has no
+        way to ask for it back. Under GDPR that makes the user the controller
+        for these rows, a responsibility the Terms spell out; this is the
+        just-in-time notice that puts it where the data is actually entered
+        rather than only in a document nobody reads.
+      */}
+      <p className="mt-1 text-xs leading-5 text-muted">
+        Save only what you need for your job search, and keep notes professional —
+        this person hasn&apos;t signed up for JobTracker. Deleting the application
+        deletes its contacts too. See our{" "}
+        <Link href="/privacy" className="font-semibold text-brand hover:underline">
+          Privacy Policy
+        </Link>
+        .
+      </p>
       <ContactForm
         key={formKey}
         initial={EMPTY_FIELDS}

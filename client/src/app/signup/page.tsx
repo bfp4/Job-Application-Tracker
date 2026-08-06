@@ -154,6 +154,24 @@ export default function SignUpPage() {
         <button type="submit" disabled={submitting} className={`${btnPrimary} w-full`}>
           {submitting ? "Creating account…" : "Create account"}
         </button>
+
+        {/*
+          Sign-in-wrap consent: the notice sits directly above the button that
+          forms the agreement, so the terms are presented at the moment of
+          assent rather than buried in a footer. The Google button higher up the
+          page creates an account too, so this is worded to cover both.
+        */}
+        <p className="text-center text-xs leading-5 text-muted">
+          By creating an account you agree to our{" "}
+          <Link href="/terms" className="font-semibold text-brand hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="font-semibold text-brand hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </form>
     </AuthLayout>
   );

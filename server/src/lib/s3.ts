@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 
 interface S3Config {
@@ -78,6 +79,47 @@ export async function uploadBuffer(
     ContentType: contentType,
   });
   await client.send(command);
+}
+
+/** DeleteObjects accepts at most 1000 keys per call; chunk anything larger. */
+const DELETE_BATCH_SIZE = 1000;
+
+/**
+ * Permanently deletes the given keys. Used by account deletion to remove a
+ * user's resume PDFs and their Markdown conversions.
+ *
+ * Throws if S3 reports any key as failed, rather than reporting a partial
+ * success as done — the caller deletes the database rows next, and those rows
+ * hold the only record of which keys exist. A silent failure here would strand
+ * the objects with nothing left pointing at them: resume PDFs, full of exactly
+ * the personal data the deletion was meant to erase, unreachable and therefore
+ * unremovable. Loud failure means the request can simply be retried.
+ *
+ * Note the bucket has versioning disabled, so this is a real delete and not a
+ * delete marker. If versioning is ever turned on, this needs to delete
+ * versions too.
+ */
+export async function deleteObjects(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const { client, bucket } = getS3();
+
+  for (let i = 0; i < keys.length; i += DELETE_BATCH_SIZE) {
+    const batch = keys.slice(i, i + DELETE_BATCH_SIZE);
+    const response = await client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
+      })
+    );
+
+    // Quiet mode still returns per-key errors; only successes are suppressed.
+    if (response.Errors && response.Errors.length > 0) {
+      throw new Error(
+        `S3 failed to delete ${response.Errors.length} of ${batch.length} objects ` +
+          `(first: ${response.Errors[0].Code ?? "unknown"}).`
+      );
+    }
+  }
 }
 
 /**

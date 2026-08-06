@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type pg from "pg";
-import { createClient } from "./db.js";
+import {
+  createClient,
+  fetchDueFollowUps,
+  fetchNotAppliedApplications,
+} from "./db.js";
 import { RDS_CA_BUNDLE } from "./rdsCaBundle.js";
 
 const ENDPOINT = "postgresql://app:secret@db.abc123.us-east-2.rds.amazonaws.com:5432/jobtracker";
@@ -53,6 +57,51 @@ describe("createClient", () => {
       connectionParameters: { options: string };
     };
     expect(connectionParameters.options).toBe("-c TimeZone=UTC");
+  });
+});
+
+/**
+ * Captures the SQL a fetch function issues, without a database.
+ *
+ * These assert on query *text*, which is normally a brittle thing to test. It
+ * earns its place here because the opt-out predicate is the whole of this
+ * project's CAN-SPAM compliance and it lives nowhere else: the handler happily
+ * emails whatever rows come back, so if the WHERE clause is ever dropped or
+ * refactored away, nothing else in the codebase notices and the first symptom
+ * is mail to people who unsubscribed.
+ */
+function recordingClient(): { client: pg.Client; sql: () => string } {
+  let captured = "";
+  const client = {
+    query(text: string) {
+      captured = text;
+      return Promise.resolve({ rows: [] });
+    },
+  } as unknown as pg.Client;
+  return { client, sql: () => captured };
+}
+
+describe("digest queries honor the email opt-out", () => {
+  it("excludes unsubscribed users from the follow-up query", async () => {
+    const { client, sql } = recordingClient();
+    await fetchDueFollowUps(client);
+    expect(sql()).toContain('u."emailOptOut" = false');
+  });
+
+  it("excludes unsubscribed users from the not-applied query", async () => {
+    const { client, sql } = recordingClient();
+    await fetchNotAppliedApplications(client);
+    expect(sql()).toContain('u."emailOptOut" = false');
+  });
+
+  it("selects the unsubscribe token both digests need for their footer", async () => {
+    const followUps = recordingClient();
+    await fetchDueFollowUps(followUps.client);
+    expect(followUps.sql()).toContain('u."unsubscribeToken"');
+
+    const notApplied = recordingClient();
+    await fetchNotAppliedApplications(notApplied.client);
+    expect(notApplied.sql()).toContain('u."unsubscribeToken"');
   });
 });
 

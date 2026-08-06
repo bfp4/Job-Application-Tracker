@@ -80,6 +80,7 @@ export async function fetchDueFollowUps(
             f."followUpDate",
             f.note,
             u.email AS "userEmail",
+            u."unsubscribeToken" AS "unsubscribeToken",
             jp.title AS "jobTitle",
             c.name  AS "companyName"
      FROM "FollowUp" f
@@ -90,6 +91,7 @@ export async function fetchDueFollowUps(
      WHERE f."followUpDate" >= date_trunc('day', NOW())
        AND f."followUpDate" <  date_trunc('day', NOW()) + interval '4 days'
        AND f.completed = false
+       AND u."emailOptOut" = false
        AND (f."reminderSentAt" IS NULL OR f."reminderSentAt" < date_trunc('day', NOW()))
      ORDER BY u.email, f."followUpDate"`
   );
@@ -109,6 +111,7 @@ export async function fetchNotAppliedApplications(
     `SELECT a.id AS "applicationId",
             a."createdAt",
             u.email AS "userEmail",
+            u."unsubscribeToken" AS "unsubscribeToken",
             jp.title AS "jobTitle",
             c.name  AS "companyName"
      FROM "Application" a
@@ -116,6 +119,7 @@ export async function fetchNotAppliedApplications(
      JOIN "JobPosting" jp  ON jp.id = a."jobPostingId"
      LEFT JOIN "Company" c ON c.id  = jp."companyId"
      WHERE a.status = 'NOT_APPLIED'
+       AND u."emailOptOut" = false
        AND (a."nudgeSentAt" IS NULL OR a."nudgeSentAt" < date_trunc('day', NOW()))
      ORDER BY u.email, a."createdAt"`
   );

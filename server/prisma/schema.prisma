@@ -47,6 +47,18 @@ model User {
   // The career field the user wants their AI output specialized for (see enum above).
   careerSpecialization CareerSpecialization @default(GENERAL)
   tier                 UserTier             @default(BASIC)
+  // Opted out of the daily reminder digest. CAN-SPAM requires the opt-out to
+  // be honored on every send, so the Lambda's two queries filter on it rather
+  // than the handler skipping addresses after the fact — an unsubscribed user
+  // must never be assembled into a digest at all.
+  emailOptOut          Boolean              @default(false)
+  // Bearer token for the unsubscribe link in each digest footer. Random per
+  // user (uuid v4, 122 bits) because the link is clicked from an email client
+  // with no session: possession of the token is the entire authorization to
+  // flip emailOptOut, so it must not be derivable from the id or the address.
+  // Deleting a row and re-signing up mints a fresh one, which is the intended
+  // rotation path.
+  unsubscribeToken     String               @unique @default(dbgenerated("(gen_random_uuid())::text"))
   // Successful AI calls made on aiCallsDate. Reset to 0 whenever a request
   // comes in on a later UTC day. Only meaningful for BASIC (PREMIUM/ADMIN
   // never check or increment it).

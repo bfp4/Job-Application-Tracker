@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import AppShell from "@/components/AppShell";
 import PasswordSection from "@/components/PasswordSection";
+import AccountDataSection from "@/components/AccountDataSection";
 import { apiFetch, apiJson } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/ui";
 import {
   IconAlert,
+  IconBell,
   IconCheckCircle,
   IconClock,
   IconFile,
@@ -45,6 +47,7 @@ export default function SettingsPage() {
   const [premiumMessage, setPremiumMessage] = useState("");
   const [submittingPremiumRequest, setSubmittingPremiumRequest] = useState(false);
   const [premiumRequestError, setPremiumRequestError] = useState<string | null>(null);
+  const [savingReminders, setSavingReminders] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -96,6 +99,36 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save specialization.");
     } finally {
       setSavingSpecialization(false);
+    }
+  }
+
+  /**
+   * `emailOptOut` is stored as an opt-*out* to match the column, but the
+   * control reads as an opt-in ("Send me…") — so the checkbox state is the
+   * negation throughout. Optimistic like the specialization dropdown, and
+   * rolled back on failure so the switch can never show "on" for a setting the
+   * server rejected.
+   */
+  async function handleRemindersChange(enabled: boolean) {
+    const previous = settings;
+    setSettings((s) => (s ? { ...s, emailOptOut: !enabled } : s));
+    setSavingReminders(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/user/me", {
+        method: "PATCH",
+        body: JSON.stringify({ emailOptOut: !enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to save your email preference.");
+      setSettings(data.user as UserSettings);
+    } catch (err) {
+      setSettings(previous);
+      setError(
+        err instanceof Error ? err.message : "Failed to save your email preference."
+      );
+    } finally {
+      setSavingReminders(false);
     }
   }
 
@@ -301,6 +334,43 @@ export default function SettingsPage() {
 
             {settings && (
               <section className={`${cardClassName} p-5`}>
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand ring-1 ring-inset ring-border">
+                    <IconBell size={18} />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-ink">Reminder emails</h2>
+                    <p className="mt-1 text-sm text-muted">
+                      A morning digest of follow-ups coming due and applications
+                      you saved but haven&apos;t submitted. One email a day, and
+                      only on days there&apos;s something to say.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="mt-4 flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={!settings.emailOptOut}
+                    onChange={(e) => handleRemindersChange(e.target.checked)}
+                    disabled={savingReminders}
+                    className="h-4 w-4 cursor-pointer rounded border-border text-brand focus:ring-brand"
+                  />
+                  <span className="text-sm font-semibold text-ink">
+                    Send me daily reminder emails
+                  </span>
+                </label>
+
+                <p className="mt-2 text-xs text-muted">
+                  Turning this off stops the daily digest. It has no effect on
+                  account emails like password resets, which are not
+                  promotional and cannot be switched off.
+                </p>
+              </section>
+            )}
+
+            {settings && (
+              <section className={`${cardClassName} p-5`}>
                 <h2 className="text-base font-bold text-ink">Premium access</h2>
 
                 {settings.tier === "ADMIN" ? (
@@ -364,6 +434,7 @@ export default function SettingsPage() {
             )}
 
             <PasswordSection />
+            <AccountDataSection />
           </>
         )}
       </div>

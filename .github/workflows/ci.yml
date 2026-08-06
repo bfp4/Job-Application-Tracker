@@ -192,7 +192,12 @@ jobs:
 
   deploy-lambda:
     name: Deploy reminder Lambda
-    needs: [server, client, lambda]
+    # Depends on deploy-api, not just the test jobs: `prisma migrate deploy` runs
+    # on the instance as part of the API deploy, and the digest queries read
+    # columns those migrations add. Deploying in parallel means a slow or failed
+    # API deploy leaves the Lambda querying columns that do not exist yet, which
+    # drops every user's digest for that day — not just the affected rows.
+    needs: [server, client, lambda, deploy-api]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:
@@ -222,6 +227,27 @@ jobs:
             echo "Function not provisioned yet (infra/09-lambda.sh) — skipping."
             exit 0
           fi
+
+          # This job can only update *code*; the function's environment is set
+          # by infra/09-lambda.sh, and the deploy role has no permission to
+          # change it. So shipping code that requires MAILING_ADDRESS to a
+          # function that doesn't have it yet would deploy green and then throw
+          # once a day at 14:00 UTC, with the digest silently not going out.
+          # Refuse instead, and say exactly which script fixes it.
+          MAILING_ADDRESS="$(aws lambda get-function --function-name "$LAMBDA_FUNCTION" \
+            --query "Configuration.Environment.Variables.MAILING_ADDRESS" \
+            --output text)"
+          if [ -z "$MAILING_ADDRESS" ] || [ "$MAILING_ADDRESS" = "None" ]; then
+            echo "::error::MAILING_ADDRESS is not set on $LAMBDA_FUNCTION."
+            echo "The reminder digest is commercial email and CAN-SPAM requires a"
+            echo "physical postal address in every message, so the handler refuses"
+            echo "to send without one. Set it and push the environment:"
+            echo "  aws ssm put-parameter --name /jobtracker/prod/MAILING_ADDRESS \\"
+            echo "    --type String --value '<your address>' --overwrite"
+            echo "  DUCKDNS_HOST=<host> ./infra/09-lambda.sh"
+            exit 1
+          fi
+
           aws lambda update-function-code \
             --function-name "$LAMBDA_FUNCTION" \
             --zip-file fileb://function.zip

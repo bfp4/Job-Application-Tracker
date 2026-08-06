@@ -51,6 +51,8 @@ A few decisions worth calling out:
 - **Defense on the write path.** URL validation rejects non-http(s) schemes (stored-XSS vector, since posting URLs render as links), uploads are capped at 10 MB in memory, hand-edited AI drafts are structurally validated before they're stored (the download endpoint renders them straight to a PDF), and every route checks row ownership against the authenticated user.
 - **One account per email, recoverable either way.** Signing up with Google creates an account with no password, so a later email/password login is rejected — and Firebase can't say why without revealing which emails are registered. The reset flow doubles as the fix: it sets a password on that same uid (adding the `password` provider next to `google.com`), so the account keeps its data and both sign-in methods work afterwards. Signed-in users can do the same from Settings without the email round-trip. Reset links open Firebase's hosted handler: a custom in-app handler was built and then removed, because this project can't repoint the action URL — the API rejects any write under `notification.sendEmail` with `400 EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED` (a Google-side restriction on standard templates; the domain is authorized and the project is `subtype: FIREBASE_AUTH`, so neither of the usual causes applies). One consequence to know: `PASSWORD_RULES` is a typing-time checklist, not enforcement — the hosted page and the REST API both bypass it. Enforcing it server-side needs Identity Platform's password policy, which this project isn't upgraded for.
 - **Reminders are idempotent per day.** Both digest sections record when they were sent — `FollowUp.reminderSentAt` and `Application.nudgeSentAt` — and are stamped only after SES accepts that user's email. A retried invocation (the handler fails loudly when any recipient bounces) re-sends nothing that already went out, while a genuinely failed send stays queued for the next run.
+- **The digest can't be sent non-compliantly.** It's commercial email, so CAN-SPAM requires a working opt-out and a physical postal address in every message. The address has no default anywhere — the Lambda throws without `MAILING_ADDRESS`, `infra/09-lambda.sh` refuses to deploy without the SSM parameter, and CI blocks a code push to a function that doesn't have it. A wrong address breaks the statute as thoroughly as a missing one, so nothing is allowed to guess. The opt-out link lives at `/unsubscribe`, deliberately mounted outside `/api` and therefore ahead of the App Check gate: a link clicked in Gmail carries no attestation token, so under `/api` every recipient would get a 401 instead of unsubscribing. `GET` only renders a confirm button — link scanners pre-fetch URLs, and a side-effecting GET would unsubscribe people who never clicked — while `POST` does the work and satisfies RFC 8058 one-click.
+- **Account deletion is ordered for the failure cases.** `DELETE /api/user/me` removes S3 objects, then the database rows, then the Firebase identity. S3 goes first because the `BaseResume` rows are the only index of which objects belong to a user — dropping them first would strand resume PDFs in the bucket with nothing pointing at them. Firebase goes last because deleting the identity first, then failing, would lock the user out of retrying and leave their data permanently unreachable.
 
 ## Getting started
 
@@ -145,3 +147,37 @@ Requires, one time:
 
 For a plain shell rather than a tunnel, EC2 → Instances → Connect → Session
 Manager works in the browser with no local install.
+
+## Legal
+
+The hosted service publishes a [Privacy Policy](client/src/app/privacy/page.tsx)
+and [Terms of Service](client/src/app/terms/page.tsx) at `/privacy` and
+`/terms`, linked from every signed-out and signed-in page and presented at the
+point of signup. They describe what this code actually does — the real
+sub-processors (AWS, Google/Firebase, Anthropic, Vercel, Google Maps), the real
+data, and the real retention — rather than generic template text.
+
+Users can export everything as JSON and permanently delete their account from
+**Settings**, so the access and erasure rights the policy promises are
+self-service rather than an email queue.
+
+The published facts — mailing address, governing-law state, contact address —
+live in [`client/src/lib/legal.ts`](client/src/lib/legal.ts) so the two
+documents can't disagree. If any is ever reset to the `[FILL IN]` marker, both
+pages render a visible "Draft — not yet in force" banner until it is real again.
+Bump `LEGAL_LAST_UPDATED` there whenever either document changes in substance.
+
+The mailing address exists **twice** — once here for the website, and once as
+the SSM parameter `/jobtracker/prod/MAILING_ADDRESS` that `infra/09-lambda.sh`
+bakes into the reminder Lambda — because the two deploy independently. Keep
+them identical. Nothing defaults it: the Lambda throws without it, the infra
+script won't deploy without it, and CI blocks a code push to a function that
+lacks it.
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2026 Ari Leverton.
+
+Note that the license covers *this source code*. It is not the agreement
+governing use of the hosted service at jobstrackeragent.vercel.app; that is the
+Terms of Service above.

@@ -14,6 +14,7 @@ import timelineEntriesRouter from "./routes/timelineEntries";
 import jobsRouter from "./routes/jobs";
 import userRouter from "./routes/user";
 import adminRouter from "./routes/admin";
+import unsubscribeRouter from "./routes/unsubscribe";
 
 const app = express();
 
@@ -51,6 +52,13 @@ const apiLimiter = rateLimit({
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
+
+// The digest opt-out, mounted OUTSIDE /api and therefore ahead of the App
+// Check gate below. It is clicked from a mail client, which has no App Check
+// token and no session — under /api every recipient would get a 401 instead of
+// unsubscribing, i.e. a broken opt-out link. It carries its own, tighter rate
+// limiter (see routes/unsubscribe.ts).
+app.use("/unsubscribe", unsubscribeRouter);
 
 // Rate limiting + App Check attestation guard the API surface (health stays
 // open, so the container healthcheck and the deploy smoke test are never

@@ -146,6 +146,8 @@ export interface UserSettings {
   /** Only meaningful for BASIC — null for PREMIUM/ADMIN (unlimited). */
   aiCallsRemaining: number | null;
   pendingPremiumRequest: boolean;
+  /** True once the user has turned the daily reminder digest off. */
+  emailOptOut: boolean;
 }
 
 /** A specialization choice for the Settings dropdown (server-provided). */

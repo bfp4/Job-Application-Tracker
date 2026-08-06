@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Creates the three IAM roles plus the GitHub OIDC provider:
-#   jobtracker-ec2            — instance role: SSM agent, ECR pull, S3 R/W, read /jobtracker/prod/*
+#   jobtracker-ec2            — instance role: SSM agent, ECR pull, S3 read/write/delete,
+#                               read /jobtracker/prod/*
 #   jobtracker-github-deploy  — assumed by GitHub Actions via OIDC (main branch only)
 #   jobtracker-reminders-role — Lambda: VPC ENIs + ses:SendEmail
 set -euo pipefail
@@ -55,7 +56,7 @@ cat >"$tmp/ec2-policy.json" <<EOF
     {
       "Sid": "S3ResumeBucket",
       "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
       "Resource": "arn:aws:s3:::${S3_BUCKET}/*"
     },
     {

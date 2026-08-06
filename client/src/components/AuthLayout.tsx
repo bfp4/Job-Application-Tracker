@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import LegalFooter from "@/components/LegalFooter";
 import { IconBriefcase, IconSparkles } from "@/components/icons";
 
 /**
@@ -94,6 +95,14 @@ export default function AuthLayout({
               {footer}
             </div>
           )}
+
+          {/*
+            On every signed-out page, not just signup: a visitor has to be able
+            to read what they're agreeing to before they hand over an email
+            address, and Google's Maps Platform terms require the privacy policy
+            to be publicly reachable.
+          */}
+          <LegalFooter className="mt-8 text-center" />
         </div>
       </main>
     </div>
