@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format/format";
 import { cardClassName } from "@/lib/ui";
 import { IconAlert, IconSparkles } from "@/components/icons";
 

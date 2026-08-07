@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, apiJson } from "@/lib/api";
-import { focusSections } from "@/lib/resumeTipsFocus";
+import { focusSections } from "@/lib/resumeTipsFocus/resumeTipsFocus";
 import { btnAi, btnAiSoft } from "@/lib/ui";
 import {
   AiDiff,

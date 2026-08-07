@@ -1,6 +1,6 @@
 "use client";
 
-import { PASSWORD_RULES } from "@/lib/authErrors";
+import { PASSWORD_RULES } from "@/lib/authErrors/authErrors";
 import { IconCheck } from "@/components/icons";
 
 /**

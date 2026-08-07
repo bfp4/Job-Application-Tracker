@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AppShell from "@/components/AppShell";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format/format";
 import {
   type AdminPremiumRequest,
   type AdminUser,

@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { Prisma } from "@prisma/client";
-import { authenticate } from "../middleware/auth";
+import { authenticate } from "../middleware/auth/auth";
 import { prisma } from "../lib/prisma";
-import { asyncHandler } from "../lib/http";
+import { asyncHandler } from "../lib/http/http";
 import { parseNullableDate } from "../lib/validation";
 
 const router = Router();

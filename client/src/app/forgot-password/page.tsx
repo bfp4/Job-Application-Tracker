@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import AuthLayout from "@/components/AuthLayout";
 import { useAuth } from "@/context/AuthContext";
-import { friendlyAuthError } from "@/lib/authErrors";
+import { friendlyAuthError } from "@/lib/authErrors/authErrors";
 import { btnPrimary, inputClassName, labelClassName } from "@/lib/ui";
 import { IconMail } from "@/components/icons";
 

@@ -30,8 +30,8 @@ import {
   toDateInputValue,
   todayInputValue,
   urgencyOf,
-} from "@/lib/format";
-import { STATUS_ORDER, statusLabel } from "@/lib/status";
+} from "@/lib/format/format";
+import { STATUS_ORDER, statusLabel } from "@/lib/status/status";
 import {
   btnPrimarySm,
   btnSecondarySm,

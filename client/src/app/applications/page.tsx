@@ -18,13 +18,13 @@ import CompanyInput from "@/components/CompanyInput";
 import { CopyField } from "@/components/CopyButton";
 import SourceInput from "@/components/SourceInput";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate, todayInputValue } from "@/lib/format";
+import { formatDate, todayInputValue } from "@/lib/format/format";
 import {
   SORT_OPTIONS,
   visibleApplications as selectVisibleApplications,
   type SortKey,
-} from "@/lib/applicationList";
-import { STATUS_ORDER, statusDotClasses, statusLabel } from "@/lib/status";
+} from "@/lib/applicationList/applicationList";
+import { STATUS_ORDER, statusDotClasses, statusLabel } from "@/lib/status/status";
 import {
   btnPrimary,
   btnPrimarySm,

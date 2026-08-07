@@ -6,13 +6,13 @@ import AppShell from "@/components/AppShell";
 import CompanyLogo from "@/components/CompanyLogo";
 import StatusDonut from "@/components/StatusDonut";
 import { apiFetch } from "@/lib/api";
-import { formatDate, relativeDayLabel, urgencyOf, type Urgency } from "@/lib/format";
+import { formatDate, relativeDayLabel, urgencyOf, type Urgency } from "@/lib/format/format";
 import {
   STATUS_ORDER,
   statusLabel,
   statusTileClasses,
   statusValueClasses,
-} from "@/lib/status";
+} from "@/lib/status/status";
 import { cardClassName, btnPrimarySm } from "@/lib/ui";
 import { useAuth } from "@/context/AuthContext";
 import {

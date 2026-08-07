@@ -5,7 +5,7 @@ import AppShell from "@/components/AppShell";
 import PasswordSection from "@/components/PasswordSection";
 import AccountDataSection from "@/components/AccountDataSection";
 import { apiFetch, apiJson } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format/format";
 import { useAuth } from "@/context/AuthContext";
 import {
   btnPrimarySm,

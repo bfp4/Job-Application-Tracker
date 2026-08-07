@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AuthLayout from "@/components/AuthLayout";
 import { useAuth } from "@/context/AuthContext";
-import { friendlyAuthError, isBadCredentialError } from "@/lib/authErrors";
+import { friendlyAuthError, isBadCredentialError } from "@/lib/authErrors/authErrors";
 import { btnPrimary, btnSecondary, inputClassName, labelClassName } from "@/lib/ui";
 import { IconGoogle } from "@/components/icons";
 

@@ -6,7 +6,7 @@ import Link from "next/link";
 import AuthLayout from "@/components/AuthLayout";
 import PasswordRules from "@/components/PasswordRules";
 import { useAuth } from "@/context/AuthContext";
-import { validatePassword, friendlyAuthError } from "@/lib/authErrors";
+import { validatePassword, friendlyAuthError } from "@/lib/authErrors/authErrors";
 import { btnPrimary, btnSecondary, inputClassName, labelClassName } from "@/lib/ui";
 import { IconGoogle, IconMail } from "@/components/icons";
 

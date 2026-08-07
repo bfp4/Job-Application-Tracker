@@ -1,5 +1,5 @@
-import { ashbyScraper } from "./ashby";
-import { greenhouseScraper } from "./greenhouse";
+import { ashbyScraper } from "./ashby/ashby";
+import { greenhouseScraper } from "./greenhouse/greenhouse";
 import { NormalizedPosting, Scraper, ScrapeError } from "./types";
 
 export { ScrapeError } from "./types";

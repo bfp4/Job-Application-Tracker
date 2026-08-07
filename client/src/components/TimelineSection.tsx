@@ -16,8 +16,8 @@ import {
   statusBadgeClasses,
   statusDotClasses,
   statusLabel,
-} from "@/lib/status";
-import { formatDate, toDateInputValue, todayInputValue } from "@/lib/format";
+} from "@/lib/status/status";
+import { formatDate, toDateInputValue, todayInputValue } from "@/lib/format/format";
 import type { ApplicationStatus, TimelineEntry } from "@/lib/types";
 
 /**

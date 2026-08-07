@@ -204,7 +204,7 @@ export interface ResumeTipsFocusItem {
  * only ever carries the pair its own specialization defined.
  *
  * KEEP IN SYNC with ResumeTipsContent / resumeTipsSchema in
- * server/src/services/resumeTips.ts — the content arrives as opaque stored
+ * server/src/services/agents/resumeTips.ts — the content arrives as opaque stored
  * JSON, so drift silently renders empty sections here.
  */
 export type ResumeTipsContent = {
@@ -233,7 +233,7 @@ export interface ResumeAnalysis {
 /**
  * A resume rewritten (rephrase/reorder only) to target one posting.
  * KEEP IN SYNC with TailoredResumeContent / TAILORED_RESUME_SCHEMA in
- * server/src/services/tailoredResume.ts and the renderer in
+ * server/src/services/agents/tailoredResume.ts and the renderer in
  * server/src/lib/resumeRender.ts — the content is opaque stored JSON.
  */
 export interface TailoredResumeContent {
@@ -264,7 +264,7 @@ export interface TailoredResume {
 /**
  * A cover letter written for one posting from the user's base resume.
  * KEEP IN SYNC with CoverLetterContent / COVER_LETTER_SCHEMA in
- * server/src/services/coverLetter.ts and the renderer in
+ * server/src/services/agents/coverLetter.ts and the renderer in
  * server/src/lib/coverLetterRender.ts — the content is opaque stored JSON.
  *
  * No date field by design: the PDF is stamped with the date it's downloaded.

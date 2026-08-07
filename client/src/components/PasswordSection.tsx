@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import PasswordRules from "@/components/PasswordRules";
 import { useAuth } from "@/context/AuthContext";
-import { validatePassword, friendlyAuthError } from "@/lib/authErrors";
+import { validatePassword, friendlyAuthError } from "@/lib/authErrors/authErrors";
 import {
   btnPrimarySm,
   cardClassName,

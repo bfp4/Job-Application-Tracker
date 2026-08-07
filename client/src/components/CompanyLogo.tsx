@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BrandIcon } from "@/lib/companyIcons";
+import type { BrandIcon } from "@/lib/companyIcons/companyIcons";
 
 /**
  * A company's brand mark as a rounded tile, from simple-icons where the brand
@@ -25,13 +25,13 @@ export type CompanyLogoSize = keyof typeof SIZES;
  * Module-level cache of the dynamic import. Every logo on a page shares one
  * request, and navigating back doesn't re-fetch.
  */
-type Registry = typeof import("@/lib/companyIcons");
+type Registry = typeof import("@/lib/companyIcons/companyIcons");
 
 let registryPromise: Promise<Registry | null> | null = null;
 let registry: Registry | null = null;
 
 function loadRegistry() {
-  registryPromise ??= import("@/lib/companyIcons")
+  registryPromise ??= import("@/lib/companyIcons/companyIcons")
     .then((mod) => {
       registry = mod;
       return mod;

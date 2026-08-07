@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import type { ApplicationStatus } from "@/lib/types";
-import { STATUS_ORDER, statusHex, statusLabel } from "@/lib/status";
+import { STATUS_ORDER, statusHex, statusLabel } from "@/lib/status/status";
 
 /**
  * Applications by pipeline stage, as a donut with the total in the hole.

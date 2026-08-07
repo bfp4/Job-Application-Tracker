@@ -1,11 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
-import { authenticate } from "../middleware/auth";
+import { authenticate } from "../middleware/auth/auth";
 import { prisma } from "../lib/prisma";
 import { uploadBuffer } from "../lib/s3";
-import { asyncHandler } from "../lib/http";
+import { asyncHandler } from "../lib/http/http";
 import { getLatestBaseResume } from "../lib/baseResume";
-import { convertPdfToMarkdown, PdfParseTimeoutError } from "../lib/pdfToMarkdown";
+import { convertPdfToMarkdown, PdfParseTimeoutError } from "../lib/pdfToMarkdown/pdfToMarkdown";
 
 const router = Router();
 
