@@ -54,6 +54,44 @@ describe("generateTailoredResume", () => {
     expect(opts.system).toContain("single US Letter page");
   });
 
+  it("tells the model to normalize section titles to standard ATS headings", async () => {
+    await generateTailoredResume(resumeMarkdown, posting);
+
+    const { system } = generateStructuredMock.mock.calls[0][0];
+    expect(system).toContain("STANDARD HEADINGS");
+    // A distinct standard heading that must survive normalization, not be merged.
+    expect(system).toContain("Projects");
+  });
+
+  it("tells the model to surface a skills keyword section and pair acronyms", async () => {
+    await generateTailoredResume(resumeMarkdown, posting);
+
+    const { system } = generateStructuredMock.mock.calls[0][0];
+    expect(system).toContain("SKILLS / KEYWORD SECTION");
+    expect(system).toContain("Certified Public Accountant (CPA)");
+    expect(system.toLowerCase()).toContain("keyword-stuff");
+  });
+
+  it("protects the skills section from the one-page trim", async () => {
+    await generateTailoredResume(resumeMarkdown, posting);
+
+    const { system } = generateStructuredMock.mock.calls[0][0];
+    expect(system).toContain("never drop the Skills/keyword section");
+  });
+
+  it("gives each field its own keyword-section heading", async () => {
+    await generateTailoredResume(resumeMarkdown, posting, "SOFTWARE_ENGINEERING");
+    expect(generateStructuredMock.mock.calls[0][0].system).toContain("Technical Skills");
+
+    vi.clearAllMocks();
+    generateStructuredMock.mockResolvedValue({ header: { name: "Ada", contact: [] } });
+
+    await generateTailoredResume(resumeMarkdown, posting, "HEALTHCARE");
+    expect(generateStructuredMock.mock.calls[0][0].system).toContain(
+      "Licenses & Certifications"
+    );
+  });
+
   it("injects field-specific guidance for the chosen specialization", async () => {
     await generateTailoredResume(resumeMarkdown, posting, "FINANCE");
 

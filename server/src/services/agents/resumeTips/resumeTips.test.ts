@@ -168,6 +168,24 @@ describe("generateResumeTips", () => {
     expect(schema.required).toEqual(expect.arrayContaining(["skillsToDevelop"]));
   });
 
+  it("separates genuine gaps from ATS keyword-match rewrites", async () => {
+    await generateResumeTips(resumeMarkdown, posting);
+
+    const { system, schema } = generateStructuredMock.mock.calls[0][0];
+    // Genuine gaps only in missingFromResume; reword cases routed elsewhere.
+    expect(schema.properties.missingFromResume.description).toContain(
+      "does NOT have"
+    );
+    expect(schema.properties.missingFromResume.description).toContain(
+      "route it to bulletPointSuggestions"
+    );
+    // Acronym pairing lives with the rewrite suggestions.
+    expect(schema.properties.bulletPointSuggestions.description).toContain(
+      "Certified Public Accountant (CPA)"
+    );
+    expect(system.toLowerCase()).toContain("ats keyword-match");
+  });
+
   it("returns whatever the model produced", async () => {
     const content = { summary: "Solid fit.", technologiesToStudy: [] };
     generateStructuredMock.mockResolvedValue(content);

@@ -61,13 +61,13 @@ const CORE_PROPERTIES = {
   missingFromResume: {
     type: "array",
     description:
-      "Concrete things the posting asks for that the resume doesn't show — skills, experience types, keywords, certifications.",
+      "Things the posting genuinely requires that the candidate does NOT have and would need to go acquire — missing skills, experience types, or certifications. Do NOT list something the candidate already has but worded differently: that is an ATS keyword-match gap they can fix right now, so route it to bulletPointSuggestions instead. Likewise route an acronym/expansion mismatch (resume says \"CPA\", posting says \"Certified Public Accountant\", or vice versa) to bulletPointSuggestions, not here.",
     items: { type: "string" },
   },
   bulletPointSuggestions: {
     type: "array",
     description:
-      "Specific resume bullet points to add, rewrite, or emphasize for this posting.",
+      "Specific resume bullets to add, rewrite, or emphasize for this posting. Use this for ATS keyword-match fixes the candidate can make immediately — where they already have the experience but should mirror the posting's exact terminology, or pair an acronym with its expanded form (e.g. \"Certified Public Accountant (CPA)\").",
     items: {
       type: "object",
       properties: {
@@ -160,7 +160,7 @@ export function resumeTipsSchema(
 }
 
 const BASE_SYSTEM_PROMPT =
-  "You are an expert career coach and recruiter. You compare a candidate's resume against a specific job posting and produce concrete, honest, actionable advice. Ground every point in the actual resume and posting text — never invent experience the candidate doesn't have, and prefer specific wording over generic advice. When the posting's description is thin, reason from the title, company, and industry norms for that role, and say when you're doing so.";
+  "You are an expert career coach and recruiter. You compare a candidate's resume against a specific job posting and produce concrete, honest, actionable advice. Ground every point in the actual resume and posting text — never invent experience the candidate doesn't have, and prefer specific wording over generic advice. When the posting's description is thin, reason from the title, company, and industry norms for that role, and say when you're doing so. Distinguish two kinds of gap: things the candidate genuinely lacks and must go acquire, versus things they already have but haven't worded to match the posting — the latter are ATS keyword-match fixes they can make immediately, so surface them as bullet rewrites rather than as missing items.";
 
 /**
  * Runs the resume-coach agent: reads the resume markdown and the posting, and

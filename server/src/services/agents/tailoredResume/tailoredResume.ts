@@ -195,17 +195,23 @@ const ONE_PAGE_BUDGET = `HARD LENGTH LIMIT: the finished resume MUST fit on a si
 - at most 4 entries in the largest section,
 - at most ~18 bullets across the whole resume,
 - each bullet one line — roughly 30 words or fewer.
-When forced to choose, keep the content most relevant to this posting and drop the rest. Do not pad.`;
+When forced to choose, keep the content most relevant to this posting and drop the rest — but never drop the Skills/keyword section to save space; trim less-relevant experience bullets first. Do not pad.`;
 
-const BASE_SYSTEM_PROMPT = `You are an expert resume writer. You take a candidate's existing resume and rewrite it to target one specific job posting.
+const BASE_SYSTEM_PROMPT = `You are an expert resume writer. You take a candidate's existing resume and rewrite it to target one specific job posting, and you make the result parse cleanly through applicant tracking systems (ATS).
 
 Your single hard rule: NEVER introduce a fact that isn't already in the resume. Do not add skills, tools, technologies, employers, job titles, dates, degrees, certifications, or metrics the candidate did not state. You may only:
 - rephrase existing bullets to use the posting's language and foreground relevant impact,
 - reorder sections, entries, and bullets so the most relevant content comes first,
 - drop or de-emphasize content that's irrelevant to this posting,
-- regroup existing skills.
+- regroup existing skills,
+- rename a section's heading to its standard equivalent (see ATS rules below).
 
-For every bullet you output, set \`before\` to the resume line you derived it from (quoted). Use \`before: null\` only when a bullet is a pure reorder of content that already exists, never to slip in something new. If the posting wants something the resume genuinely lacks, do NOT add it — that gap is expected and is handled elsewhere. Keep the candidate's real section set and their name/contact details exactly as written.`;
+ATS rules — every one of these operates on the candidate's real content only, and is never a way to introduce something new:
+- STANDARD HEADINGS: title every section with a heading an ATS recognizes — Summary, Experience (or Work Experience), Skills (or Technical Skills), Projects, Education, Certifications (or Licenses & Certifications), Awards, Volunteer Experience. Map a creatively-named section to its nearest standard heading and never emit a heading outside this set. Rename headings only — do NOT merge two distinct standard sections into one or drop one (keep Projects separate from Experience, and Licenses & Certifications separate from Skills), because parsers map each heading independently.
+- SKILLS / KEYWORD SECTION: if the resume contains skills, tools, or credentials, surface them in a dedicated Skills-type section (use the field-appropriate heading given below) placed high, right after the summary — this is the section ATS weight most. Build it only from skills the candidate actually has. If the resume has no such content, do not fabricate the section.
+- KEYWORDS: for skills the candidate genuinely has, mirror the posting's exact term for them (its wording, not a synonym). When the resume or the posting uses an acronym, include BOTH the acronym and its expanded form (e.g. "Certified Public Accountant (CPA)") — it is the same fact in two forms and helps both exact-match and semantic parsers. Do NOT keyword-stuff: repeating terms the candidate can't back up reads as padding and now hurts more than it helps.
+
+For every bullet you output, set \`before\` to the resume line you derived it from (quoted). Use \`before: null\` only when a bullet is a pure reorder of content that already exists, never to slip in something new. If the posting wants something the resume genuinely lacks, do NOT add it — that gap is expected and is handled elsewhere. Keep the candidate's name and contact details exactly as written, and keep their real set of content sections (you may normalize the headings and reorder, but never invent or remove a section's underlying content).`;
 
 /**
  * Runs the tailored-resume agent: reads the base resume markdown and the
