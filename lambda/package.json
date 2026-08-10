@@ -9,12 +9,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-sesv2": "^3.1101.0",
+    "@aws-sdk/client-sesv2": "^3.1105.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
-    "@types/pg": "^8.20.2",
+    "@types/pg": "^8.20.4",
     "esbuild": "^0.28.1",
     "typescript": "^5.7.3",
     "vitest": "^4.1.10"
