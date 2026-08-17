@@ -14,14 +14,14 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
-    "@aws-sdk/client-s3": "^3.1101.0",
-    "@opendocsg/pdf2md": "^0.2.7",
+    "@anthropic-ai/sdk": "^0.117.1",
+    "@aws-sdk/client-s3": "^3.1110.0",
+    "@opendocsg/pdf2md": "^0.2.8",
     "@prisma/client": "^5.22.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "express-rate-limit": "^8.6.1",
+    "express-rate-limit": "^8.6.2",
     "firebase-admin": "^14.0.0",
     "multer": "^2.2.0",
     "pdfkit": "^0.19.1",
@@ -35,7 +35,7 @@
     "@types/pdfkit": "^0.17.6",
     "@types/supertest": "^7.2.1",
     "supertest": "^7.2.2",
-    "tsx": "^4.23.1",
+    "tsx": "^4.23.12",
     "typescript": "^5.7.3",
     "vitest": "^4.1.10"
   }
