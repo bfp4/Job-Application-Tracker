@@ -1,4 +1,5 @@
 import { NormalizedPosting, Scraper, ScrapeError } from "../types";
+import { companyNameFromSlug } from "../html";
 
 const ASHBY_HOST = "jobs.ashbyhq.com";
 const UUID_RE =
@@ -127,19 +128,6 @@ function parseAshbyUrl(url: URL): { orgSlug: string; postingId: string } {
   }
 
   return { orgSlug, postingId };
-}
-
-/**
- * Ashby's public posting object doesn't carry the org's display name, so we
- * derive a readable default from the slug (`acme-corp` -> `Acme Corp`). It's a
- * prefill the user can correct.
- */
-function companyNameFromSlug(slug: string): string {
-  return slug
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
 
 /**

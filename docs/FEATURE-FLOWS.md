@@ -218,9 +218,16 @@ A note appears: *"Filled in from the posting — review the details before savin
 That review step is intentional. The app is confident, not certain, and you're
 the one who has to live with what gets saved.
 
-Autofill currently understands **AshbyHQ** and **Greenhouse** postings. Paste
+Autofill currently understands **AshbyHQ**, **Greenhouse**, **Workday** and
+**Workable** postings — between them, most of what a job hunt turns up. Paste
 anything else and it says so clearly rather than failing silently — you just fill
 the form in yourself.
+
+Two things to expect from the Workday side. Its postings carry no pay field, so
+salary comes back empty even when the description mentions a range, and the
+company name is derived from the careers-site address (`nvidia` → "Nvidia"), so
+it's worth a glance before saving. Only Workday's own `myworkdayjobs.com`
+addresses work; a company that fronts Workday with its own domain doesn't.
 
 ### The manual path
 
@@ -778,9 +785,9 @@ How the pieces fit together in practice.
 **Sunday — setup.** Sarah signs up with Google. In Settings she uploads her resume
 PDF and sets her field to Data & Analytics.
 
-**Sunday — filling the pipeline.** She finds six roles. Four are on Greenhouse or
-Ashby, so she pastes the link, hits Autofill, glances over the details and saves.
-Two are elsewhere, so she copies the details in by hand — remembering to paste the
+**Sunday — filling the pipeline.** She finds six roles. Four are on Greenhouse,
+Ashby or Workday, so she pastes the link, hits Autofill, glances over the details
+and saves. Two are elsewhere, so she copies the details in by hand — remembering to paste the
 description, because the form told her it matters. All six land in "Not applied."
 
 **Monday — working one job.** She opens the analytics role she wants most. The

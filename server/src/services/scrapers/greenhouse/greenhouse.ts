@@ -1,4 +1,5 @@
 import { NormalizedPosting, Scraper, ScrapeError } from "../types";
+import { companyNameFromSlug, decodeEntities, htmlToPlainText } from "../html";
 
 const GREENHOUSE_HOSTS = new Set([
   "boards.greenhouse.io",
@@ -92,7 +93,7 @@ export const greenhouseScraper: Scraper = {
         job.company_name?.trim() || companyNameFromSlug(boardToken),
       location: normalizeLocations(job),
       salary: formatPay(job.pay_input_ranges),
-      description: htmlToPlainText(job.content) || null,
+      description: descriptionToPlainText(job.content) || null,
       // Prefer Greenhouse's canonical URL; fall back to what the user pasted.
       jobUrl: job.absolute_url ?? url.toString(),
       postedDate: job.updated_at ?? null,
@@ -139,19 +140,6 @@ function unsupported(): ScrapeError {
     "UNSUPPORTED_URL",
     "That doesn't look like a single Greenhouse job posting. Paste the URL of a specific role."
   );
-}
-
-/**
- * Greenhouse's single-job object doesn't always carry the company's display
- * name, so we derive a readable default from the board token
- * (`acme-corp` -> `Acme Corp`). It's a prefill the user can correct.
- */
-function companyNameFromSlug(slug: string): string {
-  return slug
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
 
 /**
@@ -203,47 +191,11 @@ function formatDollars(cents: number): string {
 }
 
 /**
- * Greenhouse returns the job description as an HTML-escaped HTML string. This
- * unescapes it, drops the markup (keeping block boundaries as line breaks), and
- * decodes any entities left in the text, yielding readable plain text similar
- * to what other boards expose directly.
+ * Greenhouse returns the job description as an HTML-escaped HTML string, so the
+ * outer layer is unescaped to recover the real HTML before the shared converter
+ * strips the markup and decodes the text inside it.
  */
-function htmlToPlainText(content: string | undefined): string {
+function descriptionToPlainText(content: string | undefined): string {
   if (!content) return "";
-
-  // 1. Unescape the outer layer to recover the real HTML.
-  const html = decodeEntities(content);
-  // 2. Preserve block boundaries, then strip all remaining tags.
-  const stripped = html
-    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
-    .replace(/<\/\s*(p|div|li|ul|ol|h[1-6]|tr|table)\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, "");
-  // 3. Decode entities that lived inside the description text itself.
-  return decodeEntities(stripped)
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-/** Decodes the small set of HTML entities Greenhouse content uses. */
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0*39;|&apos;|&#x0*27;/gi, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#0*160;/g, " ")
-    .replace(/&#(\d+);/g, (_, d) => safeCodePoint(parseInt(d, 10)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => safeCodePoint(parseInt(h, 16)))
-    // Ampersand last so we don't re-trigger the named entities above.
-    .replace(/&amp;/g, "&");
-}
-
-function safeCodePoint(code: number): string {
-  try {
-    return String.fromCodePoint(code);
-  } catch {
-    return "";
-  }
+  return htmlToPlainText(decodeEntities(content));
 }

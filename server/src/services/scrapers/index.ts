@@ -1,5 +1,7 @@
 import { ashbyScraper } from "./ashby/ashby";
 import { greenhouseScraper } from "./greenhouse/greenhouse";
+import { workableScraper } from "./workable/workable";
+import { workdayScraper } from "./workday/workday";
 import { NormalizedPosting, Scraper, ScrapeError } from "./types";
 
 export { ScrapeError } from "./types";
@@ -8,9 +10,15 @@ export type { NormalizedPosting } from "./types";
 /**
  * Registered board providers, tried in order. Adding a new board (Lever, an
  * AI/HTML fallback) is a matter of appending a {@link Scraper} here — the route
- * and the client contract don't change.
+ * and the client contract don't change. Hostnames are disjoint, so the order is
+ * only a search order, not a precedence rule.
  */
-const scrapers: Scraper[] = [ashbyScraper, greenhouseScraper];
+const scrapers: Scraper[] = [
+  ashbyScraper,
+  greenhouseScraper,
+  workdayScraper,
+  workableScraper,
+];
 
 export interface ScrapeResult {
   /** Which provider handled the URL, e.g. "ashby". */
@@ -39,7 +47,7 @@ export async function scrapeJobPosting(rawUrl: string): Promise<ScrapeResult> {
   if (!scraper) {
     throw new ScrapeError(
       "UNSUPPORTED_URL",
-      "Only AshbyHQ and Greenhouse job URLs are supported right now."
+      "Only AshbyHQ, Greenhouse, Workday, and Workable job URLs are supported right now."
     );
   }
 
