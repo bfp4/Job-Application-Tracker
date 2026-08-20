@@ -3,8 +3,11 @@ import { companyNameFromSlug, htmlToPlainText } from "../html";
 
 /** `{tenant}.wd{n}.myworkdayjobs.com` — the tenant is the first label. */
 const WORKDAY_HOST_RE = /^([a-z0-9][a-z0-9-]*)\.wd\d+\.myworkdayjobs\.com$/i;
-/** A leading locale segment Workday puts in front of the site id, e.g. `en-US`. */
-const LOCALE_RE = /^[a-z]{2}(-[A-Za-z0-9]+)?$/;
+/**
+ * A leading locale segment Workday puts in front of the site id, e.g. `en-US`.
+ * Case-insensitive: the prefix is sometimes written `EN-US`.
+ */
+const LOCALE_RE = /^[a-z]{2}(-[A-Za-z0-9]+)?$/i;
 const FETCH_TIMEOUT_MS = 8000;
 
 /**
@@ -128,9 +131,14 @@ function parseWorkdayUrl(url: URL): {
   if (!tenant) throw unsupported();
 
   const segments = url.pathname.split("/").filter(Boolean);
-  // An optional locale prefix. Guard on there being a site id after it, so a
-  // two-letter career-site name isn't mistaken for a locale.
-  if (segments.length > 2 && LOCALE_RE.test(segments[0])) {
+  // An optional locale prefix. Length alone can't tell the two forms apart —
+  // a locale-less `{site}/job/{rest}` already has three segments — so decide on
+  // shape: drop the first segment only when the `job`/`details` marker sits one
+  // place further along than it would without a prefix. Otherwise a site id
+  // that merely *looks* like a locale (`hp`, `gm-careers`) gets eaten, and the
+  // posting is rejected as unrecognizable.
+  const marks = (s: string | undefined) => s === "job" || s === "details";
+  if (LOCALE_RE.test(segments[0] ?? "") && !marks(segments[1]) && marks(segments[2])) {
     segments.shift();
   }
 

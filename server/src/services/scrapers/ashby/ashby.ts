@@ -1,5 +1,5 @@
 import { NormalizedPosting, Scraper, ScrapeError } from "../types";
-import { companyNameFromSlug } from "../html";
+import { companyNameFromSlug, stripDataUris } from "../html";
 
 const ASHBY_HOST = "jobs.ashbyhq.com";
 const UUID_RE =
@@ -102,7 +102,9 @@ export const ashbyScraper: Scraper = {
         job.compensation?.compensationTierSummary ??
         job.compensation?.scrapeableCompensationSalarySummary ??
         null,
-      description: job.descriptionPlain?.trim() || null,
+      // descriptionPlain inlines any image in the posting as a base64 data URI
+      // — see stripDataUris.
+      description: stripDataUris(job.descriptionPlain ?? "") || null,
       // Prefer Ashby's canonical URL; fall back to what the user pasted.
       jobUrl: job.jobUrl ?? url.toString(),
       postedDate: job.publishedAt ?? null,

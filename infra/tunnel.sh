@@ -30,14 +30,25 @@ if ! command -v session-manager-plugin >/dev/null 2>&1; then
 fi
 
 # ---------- which instance ----------
+# It has to be *this* project's API box. This used to take the first Online SSM
+# instance in the region, which was fine until the account gained a second
+# project: another app's instance sorted first, and since it isn't in the RDS
+# security group the tunnel opened, accepted the connection, then dropped it —
+# surfacing as "Can't reach database server", which points at everything except
+# the real cause. Filter on the App tag that 05-ec2.sh sets instead.
+APP="${APP:-jobtracker}"
 INSTANCE_ID="${INSTANCE_ID:-}"
 if [ -z "$INSTANCE_ID" ]; then
   INSTANCE_ID="$(aws ssm describe-instance-information --region "$AWS_REGION" \
+    --filters "Key=tag:App,Values=$APP" \
     --query "InstanceInformationList[?PingStatus=='Online'].InstanceId | [0]" \
     --output text 2>/dev/null || true)"
 fi
 if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
-  echo "No SSM-managed instance is Online in $AWS_REGION." >&2
+  echo "No Online SSM instance tagged App=$APP in $AWS_REGION." >&2
+  echo "  Other projects' instances are deliberately not eligible: they aren't" >&2
+  echo "  in the database's security group, so a tunnel through one fails later" >&2
+  echo "  and looks like an unreachable database." >&2
   echo "  Set INSTANCE_ID=i-... explicitly, or check the agent is running." >&2
   exit 1
 fi

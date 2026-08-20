@@ -24,6 +24,44 @@ export function htmlToPlainText(html: string | undefined | null): string {
     .trim();
 }
 
+/**
+ * Matches an embedded base64 data URI, with the square brackets Ashby wraps
+ * them in when it flattens an `<img>` into plain text.
+ *
+ * Two deliberate limits: the payload charset excludes whitespace, so a
+ * malformed blob can't swallow the rest of the description; and the surrounding
+ * whitespace is left in place, so an image on its own line leaves blank lines
+ * for the collapse in {@link stripDataUris} to tidy, while one sitting
+ * mid-sentence can't weld its neighbours together ("A [img] B" must not become
+ * "AB").
+ */
+const BASE64_DATA_URI =
+  /\[?data:[a-z0-9.+-]+\/[a-z0-9.+-]+(?:;[a-z0-9.+-]+=[^;,\s]*)*;base64,[a-z0-9+/=]+\]?/gi;
+
+/**
+ * Strips embedded images out of a description.
+ *
+ * Providers that hand back pre-flattened plain text don't remove inline images
+ * — they inline the whole file as a base64 data URI. One real Ashby posting
+ * carried a 229KB PNG inside a 2.8KB description. That bloats the stored row,
+ * and every AI feature (tailored resume, cover letter, resume tips) sends the
+ * description to the model, so the blob would be paid for on each call while
+ * crowding out the actual posting text.
+ *
+ * Providers that return HTML don't need this: {@link htmlToPlainText} drops
+ * whole tags, so an `<img src="data:...">` disappears with the tag itself.
+ *
+ * Blank lines left behind by the removal are collapsed, so a stripped image
+ * leaves no visible gap.
+ */
+export function stripDataUris(text: string): string {
+  return text
+    .replace(BASE64_DATA_URI, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Decodes the small set of HTML entities board descriptions actually use. */
 export function decodeEntities(text: string): string {
   return text

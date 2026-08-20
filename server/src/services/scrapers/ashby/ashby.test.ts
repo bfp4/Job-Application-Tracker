@@ -90,6 +90,56 @@ describe("scrapeJobPosting (Ashby)", () => {
     expect(result.jobPosting.description).toBeNull();
   });
 
+  it("strips an inlined image out of the description", async () => {
+    // Ashby flattens an <img> in the posting into a bracketed base64 data URI.
+    // A real posting carried a 229KB PNG this way, which would otherwise be
+    // stored and then sent to the model by every AI feature.
+    const blob = "A".repeat(5000);
+    mockBoard([
+      ashbyJob({
+        descriptionPlain: `About us\n\n[data:image/png;base64,${blob}]\n\nEqual opportunity employer.`,
+      }),
+    ]);
+
+    const result = await scrapeJobPosting(POSTING_URL);
+
+    expect(result.jobPosting.description).toBe(
+      "About us\n\nEqual opportunity employer."
+    );
+  });
+
+  it("does not weld words together around an inline image", async () => {
+    mockBoard([
+      ashbyJob({ descriptionPlain: "Our office data:image/png;base64,AAAA in Brooklyn." }),
+    ]);
+
+    const result = await scrapeJobPosting(POSTING_URL);
+
+    expect(result.jobPosting.description).toBe("Our office  in Brooklyn.");
+  });
+
+  it("keeps a description that is only an image as null rather than blank", async () => {
+    mockBoard([
+      ashbyJob({ descriptionPlain: "[data:image/png;base64,AAAA]" }),
+    ]);
+
+    const result = await scrapeJobPosting(POSTING_URL);
+
+    expect(result.jobPosting.description).toBeNull();
+  });
+
+  it("leaves an ordinary description with the word 'data' alone", async () => {
+    mockBoard([
+      ashbyJob({ descriptionPlain: "Work on data:  pipelines, warehouses, ETL." }),
+    ]);
+
+    const result = await scrapeJobPosting(POSTING_URL);
+
+    expect(result.jobPosting.description).toBe(
+      "Work on data:  pipelines, warehouses, ETL."
+    );
+  });
+
   it("throws NOT_FOUND when the posting id isn't on the board", async () => {
     mockBoard([ashbyJob({ id: "99999999-0000-0000-0000-000000000000" })]);
 

@@ -226,6 +226,32 @@ describe("scrapeJobPosting (Workday)", () => {
     ).rejects.toMatchObject({ code: "UNSUPPORTED_URL" });
   });
 
+  // A career-site id can look exactly like a locale, and a locale-less URL has
+  // the same segment count as a prefixed one — so these must be told apart by
+  // where the `job` marker sits, not by length.
+  it.each([
+    ["a two-letter site id and no locale prefix", "hp"],
+    ["a site id shaped like a locale with a suffix", "gm-careers"],
+  ])("accepts a posting with %s", async (_label, site) => {
+    mockJob(workdayJob());
+
+    const result = await scrapeJobPosting(`https://${HOST}/${site}/job/${JOB_PATH}`);
+
+    expect(result.source).toBe("workday");
+    expect(global.fetch).toHaveBeenCalledWith(
+      `https://${HOST}/wday/cxs/${TENANT}/${site}/job/${JOB_PATH}`,
+      expect.anything()
+    );
+  });
+
+  it("strips an uppercased locale prefix", async () => {
+    mockJob(workdayJob());
+
+    await scrapeJobPosting(`https://${HOST}/EN-US/${SITE}/job/${JOB_PATH}`);
+
+    expect(global.fetch).toHaveBeenCalledWith(CXS_URL, expect.anything());
+  });
+
   it("rejects a Workday URL whose path isn't a job or details link", async () => {
     await expect(
       scrapeJobPosting(`https://${HOST}/en-US/${SITE}/search/Engineer`)
