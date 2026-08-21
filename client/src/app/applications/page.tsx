@@ -588,8 +588,8 @@ function AddJobForm({ onAdded }: { onAdded: (application: Application) => void }
           </button>
         </div>
         <p className="mt-1.5 text-xs font-medium text-muted">
-          Paste an AshbyHQ, Greenhouse, Workday, or Workable link and we&apos;ll fill in
-          the rest.
+          Paste an AshbyHQ, Greenhouse, Workday, Workable, or Work at a Startup link
+          and we&apos;ll fill in the rest.
         </p>
         {autofillNote && (
           <p className="mt-1.5 text-xs font-semibold text-emerald-700">{autofillNote}</p>

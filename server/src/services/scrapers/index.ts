@@ -1,6 +1,7 @@
 import { ashbyScraper } from "./ashby/ashby";
 import { greenhouseScraper } from "./greenhouse/greenhouse";
 import { workableScraper } from "./workable/workable";
+import { workatastartupScraper } from "./workatastartup/workatastartup";
 import { workdayScraper } from "./workday/workday";
 import { NormalizedPosting, Scraper, ScrapeError } from "./types";
 
@@ -18,6 +19,7 @@ const scrapers: Scraper[] = [
   greenhouseScraper,
   workdayScraper,
   workableScraper,
+  workatastartupScraper,
 ];
 
 export interface ScrapeResult {
@@ -47,7 +49,7 @@ export async function scrapeJobPosting(rawUrl: string): Promise<ScrapeResult> {
   if (!scraper) {
     throw new ScrapeError(
       "UNSUPPORTED_URL",
-      "Only AshbyHQ, Greenhouse, Workday, and Workable job URLs are supported right now."
+      "Only AshbyHQ, Greenhouse, Workday, Workable, and Work at a Startup job URLs are supported right now."
     );
   }
 

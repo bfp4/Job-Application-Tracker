@@ -218,16 +218,25 @@ A note appears: *"Filled in from the posting — review the details before savin
 That review step is intentional. The app is confident, not certain, and you're
 the one who has to live with what gets saved.
 
-Autofill currently understands **AshbyHQ**, **Greenhouse**, **Workday** and
-**Workable** postings — between them, most of what a job hunt turns up. Paste
-anything else and it says so clearly rather than failing silently — you just fill
-the form in yourself.
+Autofill currently understands **AshbyHQ**, **Greenhouse**, **Workday**,
+**Workable** and **Work at a Startup** (Y Combinator's board) postings — between
+them, most of what a job hunt turns up. Paste anything else and it says so
+clearly rather than failing silently — you just fill the form in yourself.
 
 Two things to expect from the Workday side. Its postings carry no pay field, so
 salary comes back empty even when the description mentions a range, and the
 company name is derived from the careers-site address (`nvidia` → "Nvidia"), so
 it's worth a glance before saving. Only Workday's own `myworkdayjobs.com`
 addresses work; a company that fronts Workday with its own domain doesn't.
+
+Work at a Startup fills in more than the others, because it publishes more. When
+a role lists equity it's kept alongside the pay ("$150K - $250K + 0.10% - 1.00%
+equity"), and the description you get back is the role write-up plus the skills
+the company tagged the role with plus its interview process, each labelled —
+that last one is often the most useful part of a YC posting and it's easy to
+lose track of once the link is closed. Paste the posting link itself
+(`workatastartup.com/jobs/104197`); a company's page there lists several roles
+at once, so it isn't a posting and autofill will say so.
 
 ### The manual path
 
