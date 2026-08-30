@@ -218,7 +218,7 @@ A note appears: *"Filled in from the posting — review the details before savin
 That review step is intentional. The app is confident, not certain, and you're
 the one who has to live with what gets saved.
 
-Autofill currently understands **AshbyHQ**, **Greenhouse**, **Workday**,
+Autofill currently understands **AshbyHQ**, **Gem**, **Greenhouse**, **Workday**,
 **Workable** and **Work at a Startup** (Y Combinator's board) postings — between
 them, most of what a job hunt turns up. Paste anything else and it says so
 clearly rather than failing silently — you just fill the form in yourself.
